@@ -297,8 +297,10 @@ pixel_checker_init (pixel_checker_t *checker, pixman_format_code_t format);
 void
 pixel_checker_allow_dither (pixel_checker_t *checker);
 
+/* Extract the raw channel values for a pixel. The pointer `pixel` indicates
+ * the first byte in memory of the pixel data. */
 void pixel_checker_split_pixel (const pixel_checker_t *checker,
-				uint32_t               pixel,
+				const uint8_t         *pixel,
 				ucolor_t              *u);
 
 void pixel_checker_get_max (const pixel_checker_t *checker,
@@ -309,21 +311,22 @@ void pixel_checker_get_min (const pixel_checker_t *checker,
 			    color_t               *color,
 			    ucolor_t              *u);
 
-pixman_bool_t
-pixel_checker_check (const pixel_checker_t *checker,
-		     uint32_t pixel, color_t *color);
+pixman_bool_t pixel_checker_check (const pixel_checker_t *checker,
+				   const uint8_t         *pixel,
+				   color_t               *color);
 
-void
-pixel_checker_convert_pixel_to_color (const pixel_checker_t *checker,
-                                      uint32_t pixel, color_t *color);
+void pixel_checker_convert_pixel_to_color (const pixel_checker_t *checker,
+					   const uint8_t         *pixel,
+					   color_t               *color);
 
 /* Given a pixel, produce a string representation of its bits. This can depend
  * on the pixel format, so e.g. 32bpp formats are displayed as 0x%08x, while
  * 16bpp formats might be displayed as 0x%04x.
  */
-void
-pixel_checker_convert_pixel_to_string (const pixel_checker_t *checker,
-				       uint32_t pixel, char *buf, size_t len);
+void pixel_checker_convert_pixel_to_string (const pixel_checker_t *checker,
+					    const uint8_t         *pixel,
+					    char                  *buf,
+					    size_t                 len);
 
 void
 pixel_checker_get_masks (const pixel_checker_t *checker,
