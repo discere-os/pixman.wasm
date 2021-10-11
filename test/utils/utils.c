@@ -1977,13 +1977,13 @@ do_composite (pixman_op_t op,
 static double
 round_channel (double p, int m)
 {
-    int t;
+    int64_t t;
     double r;
 
-    t = p * ((1 << m));
+    t = p * ((1LL << m));
     t -= t >> m;
 
-    r = t / (double)((1 << m) - 1);
+    r = t / (double)((1LL << m) - 1);
 
     return r;
 }
@@ -2024,12 +2024,9 @@ pixel_checker_init (pixel_checker_t *checker, pixman_format_code_t format)
 
     checker->format = format;
 
-    if (format == PIXMAN_rgba_float ||
-	format == PIXMAN_rgb_float)
-	return;
-
     switch (PIXMAN_FORMAT_TYPE (format))
     {
+    case PIXMAN_TYPE_RGBA_FLOAT:
     case PIXMAN_TYPE_A:
 	checker->bs = 0;
 	checker->gs = 0;
@@ -2100,21 +2097,26 @@ pixel_checker_allow_dither (pixel_checker_t *checker)
     checker->bd += 1 / (double)((1 << checker->bw) - 1);
 }
 
-static void
-pixel_checker_require_uint32_format (const pixel_checker_t *checker)
-{
-    assert (checker->format != PIXMAN_rgba_float &&
-	    checker->format != PIXMAN_rgb_float);
-}
-
 void
 pixel_checker_split_pixel (const pixel_checker_t *checker,
 			   const uint8_t         *pixel,
 			   ucolor_t              *u)
 {
     uint32_t value;
+    const float *f;
 
-    pixel_checker_require_uint32_format(checker);
+    if (PIXMAN_FORMAT_TYPE (checker->format) == PIXMAN_TYPE_RGBA_FLOAT)
+    {
+	f    = (const float *)pixel;
+	u->r = f[0];
+	u->g = f[1];
+	u->b = f[2];
+	if (checker->format == PIXMAN_rgba_float)
+	    u->a = f[3];
+	else
+	    u->a = 0.0;
+	return;
+    }
 
     value = *(uint32_t *)pixel;
 #ifdef WORDS_BIGENDIAN
@@ -2134,7 +2136,7 @@ pixel_checker_get_masks (const pixel_checker_t *checker,
                          uint32_t              *gm,
                          uint32_t              *bm)
 {
-    pixel_checker_require_uint32_format(checker);
+    assert (PIXMAN_FORMAT_BPP (checker->format) <= 32);
 
     if (am)
 	*am = checker->am << checker->as;
@@ -2154,6 +2156,18 @@ pixel_checker_convert_pixel_to_color (const pixel_checker_t *checker,
     ucolor_t u;
 
     pixel_checker_split_pixel (checker, pixel, &u);
+
+    if (PIXMAN_FORMAT_TYPE (checker->format) == PIXMAN_TYPE_RGBA_FLOAT)
+    {
+	if (checker->format == PIXMAN_rgba_float)
+	    color->a = u.a;
+	else
+	    color->a = 1.0;
+	color->r = u.r;
+	color->g = u.g;
+	color->b = u.b;
+	return;
+    }
 
     if (checker->am == 0)
         color->a = 1.0;
@@ -2190,8 +2204,17 @@ pixel_checker_convert_pixel_to_string (const pixel_checker_t *checker,
 				       size_t                 len)
 {
     uint32_t value;
+    const float *f;
 
-    pixel_checker_require_uint32_format (checker);
+    if (PIXMAN_FORMAT_TYPE (checker->format) == PIXMAN_TYPE_RGBA_FLOAT)
+    {
+	f = (const float *)pixel;
+	if (checker->format == PIXMAN_rgba_float)
+	    snprintf (buf, len, "%.8f,%.8f,%.8f,%.8f", f[0], f[1], f[2], f[3]);
+	else
+	    snprintf (buf, len, "%.8f,%.8f,%.8f", f[0], f[1], f[2]);
+	return;
+    }
 
     value = *(uint32_t *)pixel;
 #ifdef WORDS_BIGENDIAN
@@ -2231,6 +2254,18 @@ get_limits (const pixel_checker_t *checker,
 	    ucolor_t              *u)
 {
     color_t tmp;
+
+    if (PIXMAN_FORMAT_TYPE (checker->format) == PIXMAN_TYPE_RGBA_FLOAT)
+    {
+	if (PIXMAN_FORMAT_A (checker->format))
+	    u->a = color->a + sign * checker->ad;
+	else
+	    u->a = 0.0;
+	u->r = color->r + sign * checker->rd;
+	u->g = color->g + sign * checker->gd;
+	u->b = color->b + sign * checker->bd;
+	return;
+    }
 
     if (PIXMAN_FORMAT_TYPE (checker->format) == PIXMAN_TYPE_ARGB_SRGB)
     {
