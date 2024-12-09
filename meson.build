@@ -371,7 +371,7 @@ mips_msa_flags = ['-mmsa']
 if not use_mips_msa.disabled()
   if host_machine.cpu_family().startswith('mips')
     if cc.compiles('''
-      #if !(defined(__mips__) && (__mips_isa_rev >= 2))
+      #if !(defined(__mips__) && defined(__mips_msa))
       #error "You're not running at a MIPS platfrom, or MSA is not supported"
       #endif
       #include <msa.h>

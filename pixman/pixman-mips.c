@@ -110,7 +110,10 @@ _pixman_mips_get_implementations (pixman_implementation_t *imp)
 #if defined (__mips_msa) && (__mips_msa_width == 128)
         already_compiling_everything_for_msa = 1;
 #endif
-    if (already_compiling_everything_for_msa) imp = _pixman_implementation_create_mips_msa(imp);
+        if (already_compiling_everything_for_msa) 
+        {
+            imp = _pixman_implementation_create_mips_msa(imp);
+        }
     }
 #endif
 

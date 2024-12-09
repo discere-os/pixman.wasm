@@ -203,20 +203,20 @@ pack_565_2x128_128 (v4i32 lo, v4i32 hi)
 }
 
 static force_inline v16i8
-pack_565_4x128_128 (void* xmm0, void* xmm1, void* xmm2, void* xmm3)
+pack_565_4x128_128 (void* w0, void* w1, void* w2, void* w3)
 {
-    v4i32 xm0;
-    v4i32 xm1;
-    v4i32 xm2;
-    v4i32 xm3;
+    v4i32 v0;
+    v4i32 v1;
+    v4i32 v2;
+    v4i32 v3;
 
-    xm0 = __msa_ld_w (xmm0, 0);
-    xm1 = __msa_ld_w (xmm1, 0);
-    xm2 = __msa_ld_w (xmm2, 0);
-    xm3 = __msa_ld_w (xmm3, 0);
+    v0 = __msa_ld_w (w0, 0);
+    v1 = __msa_ld_w (w1, 0);
+    v2 = __msa_ld_w (w2, 0);
+    v3 = __msa_ld_w (w3, 0);
 
-    return __msa_pckev_b ((v16i8)pack_565_2x128_128 (xm0, xm1),
-                             (v16i8)pack_565_2x128_128 (xm2, xm3));
+    return __msa_pckev_b ((v16i8)pack_565_2x128_128 (v0, v1),
+                             (v16i8)pack_565_2x128_128 (v2, v3));
 }
 
 static force_inline int
@@ -244,20 +244,11 @@ is_opaque (v16i8 x)
 static force_inline int
 is_zero (v16i8 x)
 {
-    v4i32 cmpv;
+
     int32_t cmpresult;
 
-    cmpv = (v4i32)__msa_ceq_b (x, __msa_fill_b (0));
-    cmpresult = 1;
+    cmpresult = __msa_test_bz_v ((v16u8) x);
 
-    for (int i = 0; i < 3; i++)
-    {
-    	if(msa_getq_lane_s32 (cmpv, i) != 0xffffffff)
-        {
-    	    cmpresult = 0;
-    	    break;
-    	}
-    }
     return cmpresult;
 }
 
@@ -270,7 +261,7 @@ is_transparent (v16i8 x)
     cmpv = (v4i32)__msa_ceq_b (x, __msa_fill_b (0));
     cmpresult = 1;
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 4; i++)
     {
     	if ((msa_getq_lane_s32 (cmpv, i) & 0xff000000) != 0xff000000)
         {
@@ -643,7 +634,7 @@ static force_inline int32_t
 core_combine_over_u_pixel_msa (uint32_t src, uint32_t dst)
 {
     uint8_t a;
-    v16i8 xmms;
+    v16i8 ws;
 
     a = src >> 24;
 
@@ -653,10 +644,10 @@ core_combine_over_u_pixel_msa (uint32_t src, uint32_t dst)
     }
     else if (src)
     {
-        xmms = unpack_32_1x128 (src);
+        ws = unpack_32_1x128 (src);
         return pack_1x128_32 (
-            (v8i16)over_1x128 ( (v16u8)xmms, 
-                              (v16u8)expand_alpha_1x128 ((v8i16)xmms),
+            (v8i16)over_1x128 ( (v16u8)ws, 
+                              (v16u8)expand_alpha_1x128 ((v8i16)ws),
                               (v16u8)unpack_32_1x128 (dst)));
     }
 
@@ -692,15 +683,15 @@ combine1 (const uint32_t *pointer_source,
 static force_inline v16i8
 combine4 (const void *ps, const void *pm)
 {
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_msk_lo, xmm_msk_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_msk_lo, w_msk_hi;
     v16i8 s;
 
     if (pm)
     {
-        xmm_msk_lo = (v8i16)load_128_unaligned (pm);
+        w_msk_lo = (v8i16)load_128_unaligned (pm);
 
-        if (is_transparent ( (v16i8)xmm_msk_lo))
+        if (is_transparent ( (v16i8)w_msk_lo))
         {
             return __msa_fill_b (0);
         }
@@ -710,16 +701,16 @@ combine4 (const void *ps, const void *pm)
 
     if (pm)
     {
-        unpack_128_2x128 (s, &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_msk_lo, &xmm_msk_lo, &xmm_msk_hi);
+        unpack_128_2x128 (s, &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_msk_lo, &w_msk_lo, &w_msk_hi);
 
-        expand_alpha_2x128 (xmm_msk_lo, xmm_msk_hi, &xmm_msk_lo, &xmm_msk_hi);
+        expand_alpha_2x128 (w_msk_lo, w_msk_hi, &w_msk_lo, &w_msk_hi);
 
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_msk_lo, &xmm_msk_hi,
-                            &xmm_src_lo, &xmm_src_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_msk_lo, &w_msk_hi,
+                            &w_src_lo, &w_src_hi);
 
-        s = pack_2x128_128 (xmm_src_lo, xmm_src_hi);
+        s = pack_2x128_128 (w_src_lo, w_src_hi);
     }
 
     return s;
@@ -910,9 +901,9 @@ msa_combine_over_reverse_u (pixman_implementation_t *imp,
 {
     int32_t s, d;
 
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
 
     /* Align dst on a 16-byte boundary */
     while (w &&
@@ -933,22 +924,22 @@ msa_combine_over_reverse_u (pixman_implementation_t *imp,
         /* I'm loading unaligned because I'm not sure
          * about the address alignment.
          */
-        xmm_src_hi = (v8i16)combine4 (ps, pm);
-        xmm_dst_hi = (v8i16)load_128_aligned (pd);
+        w_src_hi = (v8i16)combine4 (ps, pm);
+        w_dst_hi = (v8i16)load_128_aligned (pd);
 
-        unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-        expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi);
+        expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi);
 
-        over_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                    &xmm_alpha_lo, &xmm_alpha_hi,
-                    &xmm_src_lo, &xmm_src_hi);
+        over_2x128 (&w_dst_lo, &w_dst_hi,
+                    &w_alpha_lo, &w_alpha_hi,
+                    &w_src_lo, &w_src_hi);
 
         /* rebuid the 4 pixel data and save*/
         save_128_aligned (pd,
-                          (v4i32)pack_2x128_128 (xmm_src_lo, xmm_src_hi));
+                          (v4i32)pack_2x128_128 (w_src_lo, w_src_hi));
 
         w -= 4;
         ps += 4;
@@ -1000,8 +991,8 @@ msa_combine_in_u (pixman_implementation_t *imp,
 {
     int32_t s, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
 
     while (w && ((intptr_t)pd & 15))
     {
@@ -1017,19 +1008,19 @@ msa_combine_in_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi = (v8i16)load_128_aligned (pd);
-        xmm_src_hi = (v8i16)combine4 (ps, pm);
+        w_dst_hi = (v8i16)load_128_aligned (pd);
+        w_src_hi = (v8i16)combine4 (ps, pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-        expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+        expand_alpha_2x128 (w_dst_lo, w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_dst_lo, &w_dst_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (pd,
-                          (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                          (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -1061,8 +1052,8 @@ msa_combine_in_reverse_u (pixman_implementation_t *imp,
 {
     int32_t s, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
 
     while (w && ((intptr_t)pd & 15))
     {
@@ -1078,19 +1069,19 @@ msa_combine_in_reverse_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi = (v8i16)load_128_aligned (pd);
-        xmm_src_hi = (v8i16)combine4 (ps, pm);
+        w_dst_hi = (v8i16)load_128_aligned (pd);
+        w_src_hi = (v8i16)combine4 (ps, pm);
 
-        unpack_128_2x128 ( (v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-        expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
+        unpack_128_2x128 ( (v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+        expand_alpha_2x128 (w_src_lo, w_src_hi, &w_src_lo, &w_src_hi);
 
-        unpack_128_2x128 ( (v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-        pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_src_lo, &xmm_src_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        unpack_128_2x128 ( (v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+        pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+                            &w_src_lo, &w_src_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -1138,24 +1129,24 @@ msa_combine_out_reverse_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	v8i16 xmm_src_lo, xmm_src_hi;
-	v8i16 xmm_dst_lo, xmm_dst_hi;
+	v8i16 w_src_lo, w_src_hi;
+	v8i16 w_dst_lo, w_dst_hi;
 
-	xmm_src_hi = (v8i16)combine4 (ps, pm);
-	xmm_dst_hi = (v8i16)load_128_aligned (pd);
+	w_src_hi = (v8i16)combine4 (ps, pm);
+	w_dst_hi = (v8i16)load_128_aligned (pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	negate_2x128       (xmm_src_lo, xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi, &w_src_lo, &w_src_hi);
+	negate_2x128       (w_src_lo, w_src_hi, &w_src_lo, &w_src_hi);
 
-	pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-			    &xmm_src_lo, &xmm_src_hi,
-			    &xmm_dst_lo, &xmm_dst_hi);
+	pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+			    &w_src_lo, &w_src_hi,
+			    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*) pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*) pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -1206,24 +1197,24 @@ msa_combine_out_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	v8i16 xmm_src_lo, xmm_src_hi;
-	v8i16 xmm_dst_lo, xmm_dst_hi;
+	v8i16 w_src_lo, w_src_hi;
+	v8i16 w_dst_lo, w_dst_hi;
 
-	xmm_src_hi = (v8i16)combine4 (ps, pm);
-	xmm_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
+	w_src_hi = (v8i16)combine4 (ps, pm);
+	w_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-	negate_2x128       (xmm_dst_lo, xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi, &w_dst_lo, &w_dst_hi);
+	negate_2x128       (w_dst_lo, w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-			    &xmm_dst_lo, &xmm_dst_hi,
-			    &xmm_dst_lo, &xmm_dst_hi);
+	pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+			    &w_dst_lo, &w_dst_hi,
+			    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*) pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*) pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -1274,10 +1265,10 @@ msa_combine_atop_u (pixman_implementation_t *imp,
 {
     uint32_t s, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
 
     while (w && ((uintptr_t)pd & 15))
     {
@@ -1293,27 +1284,27 @@ msa_combine_atop_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_src_hi = (v8i16)combine4 (ps, pm);
-	xmm_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
+	w_src_hi = (v8i16)combine4 (ps, pm);
+	w_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	negate_2x128 (xmm_alpha_src_lo, xmm_alpha_src_hi,
-		      &xmm_alpha_src_lo, &xmm_alpha_src_hi);
+	negate_2x128 (w_alpha_src_lo, w_alpha_src_hi,
+		      &w_alpha_src_lo, &w_alpha_src_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi, &w_alpha_src_lo, &w_alpha_src_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*) pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*) pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -1361,10 +1352,10 @@ msa_combine_atop_reverse_u (pixman_implementation_t *imp,
 {
     uint32_t s, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
 
     while (w && ((uintptr_t)pd & 15))
     {
@@ -1380,27 +1371,27 @@ msa_combine_atop_reverse_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_src_hi = (v8i16)combine4 (ps, pm);
-	xmm_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
+	w_src_hi = (v8i16)combine4 (ps, pm);
+	w_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	negate_2x128 (xmm_alpha_dst_lo, xmm_alpha_dst_hi,
-		      &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	negate_2x128 (w_alpha_dst_lo, w_alpha_dst_hi,
+		      &w_alpha_dst_lo, &w_alpha_dst_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi, &w_alpha_src_lo, &w_alpha_src_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*) pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*) pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -1451,10 +1442,10 @@ msa_combine_xor_u (pixman_implementation_t *imp,
     const uint32_t* ps = src;
     const uint32_t* pm = mask;
 
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
 
     while (w && ((uintptr_t)pd & 15))
     {
@@ -1470,29 +1461,29 @@ msa_combine_xor_u (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_src = (v8i16)combine4 (ps, pm);
-	xmm_dst = (v8i16)load_128_aligned ((int32_t*) pd);
+	w_src = (v8i16)combine4 (ps, pm);
+	w_dst = (v8i16)load_128_aligned ((int32_t*) pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	negate_2x128 (xmm_alpha_src_lo, xmm_alpha_src_hi,
-		      &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	negate_2x128 (xmm_alpha_dst_lo, xmm_alpha_dst_hi,
-		      &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	negate_2x128 (w_alpha_src_lo, w_alpha_src_hi,
+		      &w_alpha_src_lo, &w_alpha_src_hi);
+	negate_2x128 (w_alpha_dst_lo, w_alpha_dst_hi,
+		      &w_alpha_dst_lo, &w_alpha_dst_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi, &w_alpha_src_lo, &w_alpha_src_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*)pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*)pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -1604,7 +1595,7 @@ msa_combine_saturate_u (pixman_implementation_t *imp,
     int32_t s, d;
 
     uint32_t pack_cmp;
-    v8i16 xmm_src, xmm_dst;
+    v8i16 w_src, w_dst;
 
     pack_cmp = 0;
 
@@ -1625,12 +1616,12 @@ msa_combine_saturate_u (pixman_implementation_t *imp,
         v16i8 cmp_mask;
         uint64_t cmp_mask_low, cmp_mask_high; 
 
-        xmm_dst = (v8i16)load_128_aligned (pd);
-        xmm_src = (v8i16)combine4 (ps, pm);   
+        w_dst = (v8i16)load_128_aligned (pd);
+        w_src = (v8i16)combine4 (ps, pm);   
 
         cmp_mask = __msa_srli_b((v16i8)__msa_clt_s_w(
-                                          __msa_srli_w((v4i32)__msa_xor_v((v16u8)xmm_dst, (v16u8)mask_ff000000), 24),
-                                          __msa_srli_w((v4i32)xmm_src, 24)),
+                                          __msa_srli_w((v4i32)__msa_xor_v((v16u8)w_dst, (v16u8)mask_ff000000), 24),
+                                          __msa_srli_w((v4i32)w_src, 24)),
                                       7);
         /* simulates _mm_movemask_epi8 */
         cmp_mask_low  = __msa_copy_u_d((v2i64) cmp_mask, 0);
@@ -1678,7 +1669,7 @@ msa_combine_saturate_u (pixman_implementation_t *imp,
         }
         else
         {
-            save_128_aligned (pd, (v4i32)__msa_adds_s_b ((v16i8)xmm_dst, (v16i8)xmm_src));
+            save_128_aligned (pd, (v4i32)__msa_adds_s_b ((v16i8)w_dst, (v16i8)w_src));
 
             pd += 4;
             ps += 4;
@@ -1712,9 +1703,9 @@ msa_combine_src_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_mask_lo, w_mask_hi;
+    v8i16 w_dst_lo, w_dst_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -1727,18 +1718,18 @@ msa_combine_src_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi,  &xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi,  &w_mask_lo, &w_mask_hi);
 
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_mask_lo, &w_mask_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -1783,10 +1774,10 @@ msa_combine_over_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -1800,24 +1791,24 @@ msa_combine_over_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi,&xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi,&w_mask_lo, &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi);
+        expand_alpha_2x128 (w_src_lo, w_src_hi,
+                            &w_alpha_lo, &w_alpha_hi);
 
-        in_over_2x128 (&xmm_src_lo, &xmm_src_hi,
-                       &xmm_alpha_lo, &xmm_alpha_hi,
-                       &xmm_mask_lo, &xmm_mask_hi,
-                       &xmm_dst_lo, &xmm_dst_hi);
+        in_over_2x128 (&w_src_lo, &w_src_hi,
+                       &w_alpha_lo, &w_alpha_hi,
+                       &w_mask_lo, &w_mask_hi,
+                       &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -1862,10 +1853,10 @@ msa_combine_over_reverse_ca (pixman_implementation_t *imp,
 {
     int32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -1879,26 +1870,26 @@ msa_combine_over_reverse_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi,  &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi,  &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-                            &xmm_alpha_lo,  &xmm_alpha_hi);
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_mask_lo,  &xmm_mask_hi,
-                            &xmm_mask_lo,  &xmm_mask_hi);
+        expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+                            &w_alpha_lo,  &w_alpha_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_mask_lo,  &w_mask_hi,
+                            &w_mask_lo,  &w_mask_hi);
 
-        over_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                    &xmm_alpha_lo, &xmm_alpha_hi,
-                    &xmm_mask_lo, &xmm_mask_hi);
+        over_2x128 (&w_dst_lo, &w_dst_hi,
+                    &w_alpha_lo, &w_alpha_hi,
+                    &w_mask_lo, &w_mask_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_mask_lo, xmm_mask_hi));
+            pd, (v4i32)pack_2x128_128 (w_mask_lo, w_mask_hi));
 
         ps += 4;
         pd += 4;
@@ -1928,10 +1919,10 @@ msa_combine_in_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -1949,27 +1940,27 @@ msa_combine_in_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi,  &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi,  &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi);
+        expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi);
 
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_mask_lo, &w_mask_hi,
+                            &w_dst_lo, &w_dst_hi);
 
-        pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -2002,10 +1993,10 @@ msa_combine_in_reverse_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -2022,26 +2013,26 @@ msa_combine_in_reverse_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi,  &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo,  &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi,  &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo,  &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                            &xmm_alpha_lo,  &xmm_alpha_hi);
-        pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_alpha_lo,  &xmm_alpha_hi,
-                            &xmm_alpha_lo,  &xmm_alpha_hi);
+        expand_alpha_2x128 (w_src_lo, w_src_hi,
+                            &w_alpha_lo,  &w_alpha_hi);
+        pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+                            &w_alpha_lo,  &w_alpha_hi,
+                            &w_alpha_lo,  &w_alpha_hi);
 
-        pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -2073,10 +2064,10 @@ msa_combine_out_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -2094,28 +2085,28 @@ msa_combine_out_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi,  &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi,  &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi);
-        negate_2x128 (xmm_alpha_lo, xmm_alpha_hi,
-                      &xmm_alpha_lo, &xmm_alpha_hi);
+        expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi);
+        negate_2x128 (w_alpha_lo, w_alpha_hi,
+                      &w_alpha_lo, &w_alpha_hi);
 
-        pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-                            &xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
-        pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+                            &w_mask_lo, &w_mask_hi,
+                            &w_dst_lo, &w_dst_hi);
+        pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+                            &w_alpha_lo, &w_alpha_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -2149,10 +2140,10 @@ msa_combine_out_reverse_ca (pixman_implementation_t *imp,
 {
     int32_t s, m, d;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (intptr_t)pd & 15)
     {
@@ -2171,30 +2162,30 @@ msa_combine_out_reverse_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-        xmm_dst_hi  = (v8i16)load_128_aligned   (pd);
-        xmm_src_hi  = (v8i16)load_128_unaligned (ps);
-        xmm_mask_hi = (v8i16)load_128_unaligned (pm);
+        w_dst_hi  = (v8i16)load_128_aligned   (pd);
+        w_src_hi  = (v8i16)load_128_unaligned (ps);
+        w_mask_hi = (v8i16)load_128_unaligned (pm);
 
-        unpack_128_2x128 ((v16i8)xmm_dst_hi,  &xmm_dst_lo, &xmm_dst_hi);
-        unpack_128_2x128 ((v16i8)xmm_src_hi,  &xmm_src_lo, &xmm_src_hi);
-        unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+        unpack_128_2x128 ((v16i8)w_dst_hi,  &w_dst_lo, &w_dst_hi);
+        unpack_128_2x128 ((v16i8)w_src_hi,  &w_src_lo, &w_src_hi);
+        unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-        expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi);
+        expand_alpha_2x128 (w_src_lo, w_src_hi,
+                            &w_alpha_lo, &w_alpha_hi);
 
-        pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_alpha_lo, &xmm_alpha_hi,
-                            &xmm_mask_lo, &xmm_mask_hi);
+        pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+                            &w_alpha_lo, &w_alpha_hi,
+                            &w_mask_lo, &w_mask_hi);
 
-        negate_2x128 (xmm_mask_lo, xmm_mask_hi,
-                      &xmm_mask_lo, &xmm_mask_hi);
+        negate_2x128 (w_mask_lo, w_mask_hi,
+                      &w_mask_lo, &w_mask_hi);
 
-        pix_multiply_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                            &xmm_mask_lo, &xmm_mask_hi,
-                            &xmm_dst_lo, &xmm_dst_hi);
+        pix_multiply_2x128 (&w_dst_lo, &w_dst_hi,
+                            &w_mask_lo, &w_mask_hi,
+                            &w_dst_lo, &w_dst_hi);
 
         save_128_aligned (
-            pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+            pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
         ps += 4;
         pd += 4;
@@ -2248,11 +2239,11 @@ msa_combine_atop_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (uintptr_t)pd & 15)
     {
@@ -2266,35 +2257,35 @@ msa_combine_atop_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
-	xmm_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
-	xmm_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
+	w_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
+	w_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
+	w_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
 
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_src_lo, &xmm_src_hi);
-	pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi);
+	pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+			    &w_mask_lo, &w_mask_hi,
+			    &w_src_lo, &w_src_hi);
+	pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi,
+			    &w_mask_lo, &w_mask_hi);
 
-	negate_2x128 (xmm_mask_lo, xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+	negate_2x128 (w_mask_lo, w_mask_hi, &w_mask_lo, &w_mask_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_mask_lo, &xmm_mask_hi,
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_dst_lo, &w_dst_hi, &w_mask_lo, &w_mask_hi,
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*)pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*)pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -2344,11 +2335,11 @@ msa_combine_atop_reverse_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (uintptr_t)pd & 15)
     {
@@ -2362,36 +2353,36 @@ msa_combine_atop_reverse_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
-	xmm_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
-	xmm_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
+	w_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
+	w_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
+	w_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
 
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_src_lo, &xmm_src_hi);
-	pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi);
+	pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+			    &w_mask_lo, &w_mask_hi,
+			    &w_src_lo, &w_src_hi);
+	pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi,
+			    &w_mask_lo, &w_mask_hi);
 
-	negate_2x128 (xmm_alpha_dst_lo, xmm_alpha_dst_hi,
-		      &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	negate_2x128 (w_alpha_dst_lo, w_alpha_dst_hi,
+		      &w_alpha_dst_lo, &w_alpha_dst_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_mask_lo, &xmm_mask_hi,
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_dst_lo, &w_dst_hi, &w_mask_lo, &w_mask_hi,
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*)pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*)pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -2443,11 +2434,11 @@ msa_combine_xor_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_src_lo, xmm_alpha_src_hi;
-    v8i16 xmm_alpha_dst_lo, xmm_alpha_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_src_lo, w_alpha_src_hi;
+    v8i16 w_alpha_dst_lo, w_alpha_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (uintptr_t)pd & 15)
     {
@@ -2461,38 +2452,38 @@ msa_combine_xor_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
-	xmm_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
-	xmm_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
+	w_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
+	w_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
+	w_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
 
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-	expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi);
-	expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi,
-			    &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
+	expand_alpha_2x128 (w_src_lo, w_src_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi);
+	expand_alpha_2x128 (w_dst_lo, w_dst_hi,
+			    &w_alpha_dst_lo, &w_alpha_dst_hi);
 
-	pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_src_lo, &xmm_src_hi);
-	pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_alpha_src_lo, &xmm_alpha_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi);
+	pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+			    &w_mask_lo, &w_mask_hi,
+			    &w_src_lo, &w_src_hi);
+	pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+			    &w_alpha_src_lo, &w_alpha_src_hi,
+			    &w_mask_lo, &w_mask_hi);
 
-	negate_2x128 (xmm_alpha_dst_lo, xmm_alpha_dst_hi,
-		      &xmm_alpha_dst_lo, &xmm_alpha_dst_hi);
-	negate_2x128 (xmm_mask_lo, xmm_mask_hi,
-		      &xmm_mask_lo, &xmm_mask_hi);
+	negate_2x128 (w_alpha_dst_lo, w_alpha_dst_hi,
+		      &w_alpha_dst_lo, &w_alpha_dst_hi);
+	negate_2x128 (w_mask_lo, w_mask_hi,
+		      &w_mask_lo, &w_mask_hi);
 
 	pix_add_multiply_2x128 (
-	    &xmm_dst_lo, &xmm_dst_hi, &xmm_mask_lo, &xmm_mask_hi,
-	    &xmm_src_lo, &xmm_src_hi, &xmm_alpha_dst_lo, &xmm_alpha_dst_hi,
-	    &xmm_dst_lo, &xmm_dst_hi);
+	    &w_dst_lo, &w_dst_hi, &w_mask_lo, &w_mask_hi,
+	    &w_src_lo, &w_src_hi, &w_alpha_dst_lo, &w_alpha_dst_hi,
+	    &w_dst_lo, &w_dst_hi);
 
 	save_128_aligned (
-	    (int32_t*)pd, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+	    (int32_t*)pd, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	ps += 4;
 	pd += 4;
@@ -2521,9 +2512,9 @@ msa_combine_add_ca (pixman_implementation_t *imp,
 {
     uint32_t s, m, d;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_mask_lo, w_mask_hi;
 
     while (w && (uintptr_t)pd & 15)
     {
@@ -2540,22 +2531,22 @@ msa_combine_add_ca (pixman_implementation_t *imp,
 
     while (w >= 4)
     {
-	xmm_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
-	xmm_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
-	xmm_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
+	w_src_hi  = (v8i16)load_128_unaligned ((uint32_t*)ps);
+	w_mask_hi = (v8i16)load_128_unaligned ((uint32_t*)pm);
+	w_dst_hi  = (v8i16)load_128_aligned   ((int32_t*)pd);
 
-	unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	unpack_128_2x128 ((v16i8)xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
-	unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	unpack_128_2x128 ((v16i8)w_mask_hi, &w_mask_lo, &w_mask_hi);
+	unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-	pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-			    &xmm_mask_lo, &xmm_mask_hi,
-			    &xmm_src_lo, &xmm_src_hi);
+	pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+			    &w_mask_lo, &w_mask_hi,
+			    &w_src_lo, &w_src_hi);
 
 	save_128_aligned (
 	    (int32_t*)pd, (v4i32)pack_2x128_128 (
-		(v8i16)__msa_adds_u_h ((v8u16)xmm_src_lo, (v8u16)xmm_dst_lo),
-		(v8i16)__msa_adds_u_h ((v8u16)xmm_src_hi, (v8u16)xmm_dst_hi)));
+		(v8i16)__msa_adds_u_h ((v8u16)w_src_lo, (v8u16)w_dst_lo),
+		(v8i16)__msa_adds_u_h ((v8u16)w_src_hi, (v8u16)w_dst_hi)));
 
 	ps += 4;
 	pd += 4;
@@ -2606,8 +2597,8 @@ msa_composite_over_n_8888 (pixman_implementation_t *imp,
     uint32_t    *dst_line, *dst, d;
     int32_t   w;
     int dst_stride;
-    v8i16 xmm_src, xmm_alpha;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src, w_alpha;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -2617,8 +2608,8 @@ msa_composite_over_n_8888 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
 
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
-    xmm_alpha = expand_alpha_1x128 (xmm_src);
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_alpha = expand_alpha_1x128 (w_src);
 
     while (height--)
     {
@@ -2630,25 +2621,25 @@ msa_composite_over_n_8888 (pixman_implementation_t *imp,
 	while (w && (uintptr_t)dst & 15)
 	{
 	    d = *dst;
-	    *dst++ = pack_1x128_32 ((v8i16)over_1x128 ((v16u8)xmm_src,
-						       (v16u8)xmm_alpha,
+	    *dst++ = pack_1x128_32 ((v8i16)over_1x128 ((v16u8)w_src,
+						       (v16u8)w_alpha,
 						       (v16u8)unpack_32_1x128 (d)));
 	    w--;
 	}
 
 	while (w >= 4)
 	{
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-	    over_2x128 (&xmm_src, &xmm_src,
-			&xmm_alpha, &xmm_alpha,
-			&xmm_dst_lo, &xmm_dst_hi);
+	    over_2x128 (&w_src, &w_src,
+			&w_alpha, &w_alpha,
+			&w_dst_lo, &w_dst_hi);
 
 	    /* rebuid the 4 pixel data and save*/
 	    save_128_aligned (
-		(int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		(int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	    w -= 4;
 	    dst += 4;
@@ -2657,8 +2648,8 @@ msa_composite_over_n_8888 (pixman_implementation_t *imp,
 	while (w)
 	{
 	    d = *dst;
-	    *dst++ = pack_1x128_32 ((v8i16)over_1x128 ((v16u8)xmm_src,
-						       (v16u8)xmm_alpha,
+	    *dst++ = pack_1x128_32 ((v8i16)over_1x128 ((v16u8)w_src,
+						       (v16u8)w_alpha,
 						       (v16u8)unpack_32_1x128 (d)));
 	    w--;
 	}
@@ -2675,8 +2666,8 @@ msa_composite_over_n_0565 (pixman_implementation_t *imp,
     uint16_t    *dst_line, *dst, d;
     uint32_t w;
     int dst_stride;
-    v4i32 xmm_src, xmm_alpha;
-    v8i16 xmm_dst, xmm_dst0, xmm_dst1, xmm_dst2, xmm_dst3;
+    v4i32 w_src, w_alpha;
+    v8i16 w_dst, w_dst0, w_dst1, w_dst2, w_dst3;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -2686,8 +2677,8 @@ msa_composite_over_n_0565 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint16_t, dst_stride, dst_line, 1);
 
-    xmm_src   =        expand_pixel_32_1x128 (src);
-    xmm_alpha = (v4i32)expand_alpha_1x128 ((v8i16)xmm_src);
+    w_src   =        expand_pixel_32_1x128 (src);
+    w_alpha = (v4i32)expand_alpha_1x128 ((v8i16)w_src);
 
     while (height--)
     {
@@ -2701,30 +2692,30 @@ msa_composite_over_n_0565 (pixman_implementation_t *imp,
             d = *dst;
 
             *dst++ = pack_565_32_16 (
-                pack_1x128_32 ((v8i16)over_1x128 ((v16u8)xmm_src,
-                                                  (v16u8)xmm_alpha,
+                pack_1x128_32 ((v8i16)over_1x128 ((v16u8)w_src,
+                                                  (v16u8)w_alpha,
                                                   (v16u8)expand565_16_1x128 (d))));
             w--;
         }
 
         while (w >= 8)
         {
-            xmm_dst = (v8i16)load_128_aligned (dst);
+            w_dst = (v8i16)load_128_aligned (dst);
 
-            unpack_565_128_4x128 ((v4i32)xmm_dst,
-                                  &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
+            unpack_565_128_4x128 ((v4i32)w_dst,
+                                  &w_dst0, &w_dst1, &w_dst2, &w_dst3);
 
-            over_2x128 (&xmm_src, &xmm_src,
-                        &xmm_alpha,  &xmm_alpha,
-                        &xmm_dst0,  &xmm_dst1);
-            over_2x128 (&xmm_src, &xmm_src,
-                        &xmm_alpha,  &xmm_alpha,
-                        &xmm_dst2,  &xmm_dst3);
+            over_2x128 (&w_src, &w_src,
+                        &w_alpha,  &w_alpha,
+                        &w_dst0,  &w_dst1);
+            over_2x128 (&w_src, &w_src,
+                        &w_alpha,  &w_alpha,
+                        &w_dst2,  &w_dst3);
 
-            xmm_dst = (v8i16)pack_565_4x128_128 (
-                &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
+            w_dst = (v8i16)pack_565_4x128_128 (
+                &w_dst0, &w_dst1, &w_dst2, &w_dst3);
 
-            save_128_aligned ((uint32_t *) dst, (v4i32)xmm_dst);
+            save_128_aligned ((uint32_t *) dst, (v4i32)w_dst);
 
             dst += 8;
             w -= 8;
@@ -2734,7 +2725,7 @@ msa_composite_over_n_0565 (pixman_implementation_t *imp,
         {
             d = *dst;
             *dst++ = pack_565_32_16 (
-                pack_1x128_32 ((v8i16)over_1x128 ((v16u8)xmm_src, (v16u8)xmm_alpha,
+                pack_1x128_32 ((v8i16)over_1x128 ((v16u8)w_src, (v16u8)w_alpha,
                                                   (v16u8)expand565_16_1x128 (d))));
         }
     }
@@ -2753,11 +2744,11 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
     uint32_t pack_cmp;
     int dst_stride, mask_stride;
 
-    v8i16 xmm_src;
-    v8i16 xmm_dst;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src;
+    v8i16 w_dst;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
-    v8i16 mmx_src, mmx_mask, mmx_dest;
+    v8i16 wf_src, wf_mask, wf_dest;
 
     pack_cmp = 0;
 
@@ -2771,8 +2762,8 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
         mask_image, mask_x, mask_y, uint32_t, mask_stride, mask_line, 1);
 
-    xmm_src = (v8i16)__msa_ilvr_b ((v16i8)__msa_fill_w (src), (v16i8)zero);
-    mmx_src = xmm_src;
+    w_src = (v8i16)__msa_ilvr_b ((v16i8)__msa_fill_w (src), (v16i8)zero);
+    wf_src = w_src;
 
     while (height--)
     {
@@ -2791,12 +2782,12 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
             {
                 d = *pd;
 
-                mmx_mask = (v8i16)unpack_32_1x128 (m);
-                mmx_dest = (v8i16)unpack_32_1x128 (d);
+                wf_mask = (v8i16)unpack_32_1x128 (m);
+                wf_dest = (v8i16)unpack_32_1x128 (d);
 
                 *pd = pack_1x128_32 ((v8i16)
-                    __msa_adds_s_b ((v16i8)pix_multiply_1x128 (mmx_mask, mmx_src),
-                                    (v16i8)mmx_dest));
+                    __msa_adds_s_b ((v16i8)pix_multiply_1x128 (wf_mask, wf_src),
+                                    (v16i8)wf_dest));
             }
 
             pd++;
@@ -2808,8 +2799,8 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
             v16i8 cmp_mask;
             uint64_t cmp_mask_low, cmp_mask_high;
 
-            xmm_mask = (v8i16)load_128_unaligned (pm);
-            cmp_mask = __msa_srli_b (__msa_ceq_b ((v16i8)xmm_mask, (v16i8)zero), 7);
+            w_mask = (v8i16)load_128_unaligned (pm);
+            cmp_mask = __msa_srli_b (__msa_ceq_b ((v16i8)w_mask, (v16i8)zero), 7);
 
             /* simulates _mm_movemask_epi8 */
 
@@ -2834,17 +2825,17 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
             /* if all bits in mask are zero, pack_cmp are equal to 0xffff */
             if (pack_cmp != 0xffff)
             {
-                xmm_dst = (v8i16)load_128_aligned (pd);
+                w_dst = (v8i16)load_128_aligned (pd);
 
-                unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+                unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
-                pix_multiply_2x128 (&xmm_src,     &xmm_src,
-                                    &xmm_mask_lo, &xmm_mask_hi,
-                                    &xmm_mask_lo, &xmm_mask_hi);
-                xmm_mask_hi = (v8i16)pack_2x128_128 (xmm_mask_lo, xmm_mask_hi);
+                pix_multiply_2x128 (&w_src,     &w_src,
+                                    &w_mask_lo, &w_mask_hi,
+                                    &w_mask_lo, &w_mask_hi);
+                w_mask_hi = (v8i16)pack_2x128_128 (w_mask_lo, w_mask_hi);
 
                 save_128_aligned (
-                    pd, (v4i32)__msa_adds_u_b ((v16u8)xmm_mask_hi, (v16u8)xmm_dst));
+                    pd, (v4i32)__msa_adds_u_b ((v16u8)w_mask_hi, (v16u8)w_dst));
             }
 
             pd += 4;
@@ -2860,12 +2851,12 @@ msa_composite_add_n_8888_8888_ca (pixman_implementation_t *imp,
             {
                 d = *pd;
 
-                mmx_mask = (v8i16)unpack_32_1x128 (m);
-                mmx_dest = (v8i16)unpack_32_1x128 (d);
+                wf_mask = (v8i16)unpack_32_1x128 (m);
+                wf_dest = (v8i16)unpack_32_1x128 (d);
 
                 *pd = pack_1x128_32 (
-                    (v8i16)__msa_adds_s_b ((v16i8)pix_multiply_1x128 ((v8i16)mmx_mask, (v8i16)mmx_src),
-                                           (v16i8)mmx_dest));
+                    (v8i16)__msa_adds_s_b ((v16i8)pix_multiply_1x128 ((v8i16)wf_mask, (v8i16)wf_src),
+                                           (v16i8)wf_dest));
             }
 
             pd++;
@@ -2887,11 +2878,11 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
     uint32_t  pack_cmp;
     int dst_stride, mask_stride;
 
-    v8i16 xmm_src, xmm_alpha;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_alpha;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
-    v8i16 mmx_src, mmx_alpha, mmx_mask, mmx_dest;
+    v8i16 wf_src, wf_alpha, wf_mask, wf_dest;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -2904,10 +2895,10 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
         mask_image, mask_x, mask_y, uint32_t, mask_stride, mask_line, 1);
 
     
-    xmm_src   = (v8i16)__msa_ilvr_b ((v16i8)__msa_fill_w (src), (v16i8)zero);
-    xmm_alpha = expand_alpha_1x128 (xmm_src);
-    mmx_src   = xmm_src;
-    mmx_alpha = xmm_alpha;
+    w_src   = (v8i16)__msa_ilvr_b ((v16i8)__msa_fill_w (src), (v16i8)zero);
+    w_alpha = expand_alpha_1x128 (w_src);
+    wf_src   = w_src;
+    wf_alpha = w_alpha;
 
     while (height--)
     {
@@ -2925,13 +2916,13 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
             if (m)
             {
                 d = *pd;
-                mmx_mask = (v8i16)unpack_32_1x128 (m);
-                mmx_dest = (v8i16)unpack_32_1x128 (d);
+                wf_mask = (v8i16)unpack_32_1x128 (m);
+                wf_dest = (v8i16)unpack_32_1x128 (d);
 
-                *pd = pack_1x128_32 ((v8i16)in_over_1x128 (&mmx_src,
-                                                           &mmx_alpha,
-                                                           &mmx_mask,
-                                                           &mmx_dest));
+                *pd = pack_1x128_32 ((v8i16)in_over_1x128 (&wf_src,
+                                                           &wf_alpha,
+                                                           &wf_mask,
+                                                           &wf_dest));
             }
 
             pd++;
@@ -2945,9 +2936,9 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
             v16i8 cmp_mask;
             pack_cmp = 0;
 
-            xmm_mask = (v8i16)load_128_unaligned (pm);
+            w_mask = (v8i16)load_128_unaligned (pm);
 
-            cmp_mask = __msa_srli_b (__msa_ceq_b ((v16i8)xmm_mask, (v16i8)zero), 7);
+            cmp_mask = __msa_srli_b (__msa_ceq_b ((v16i8)w_mask, (v16i8)zero), 7);
 
             /* simulates _mm_movemask_epi8 */
 
@@ -2971,18 +2962,18 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
             /* if all bits in mask are zero, pack_cmp are equal to 0xffff */
             if (pack_cmp != 0xffff)
             {
-                xmm_dst = (v8i16)load_128_aligned (pd);
+                w_dst = (v8i16)load_128_aligned (pd);
 
-                unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-                unpack_128_2x128 ((v16i8)xmm_dst,  &xmm_dst_lo, &xmm_dst_hi);
+                unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+                unpack_128_2x128 ((v16i8)w_dst,  &w_dst_lo, &w_dst_hi);
 
-                in_over_2x128 (&xmm_src, &xmm_src,
-                               &xmm_alpha,  &xmm_alpha,
-                               &xmm_mask_lo,  &xmm_mask_hi,
-                               &xmm_dst_lo,  &xmm_dst_hi);
+                in_over_2x128 (&w_src, &w_src,
+                               &w_alpha,  &w_alpha,
+                               &w_mask_lo,  &w_mask_hi,
+                               &w_dst_lo,  &w_dst_hi);
 
                 save_128_aligned (
-                    pd, (v4i32)pack_2x128_128 ((v8i16)xmm_dst_lo, (v8i16)xmm_dst_hi));
+                    pd, (v4i32)pack_2x128_128 ((v8i16)w_dst_lo, (v8i16)w_dst_hi));
             }
 
             pd += 4;
@@ -2997,11 +2988,11 @@ msa_composite_over_n_8888_8888_ca (pixman_implementation_t *imp,
             if (m)
             {
                 d = *pd;
-                mmx_mask = (v8i16)unpack_32_1x128 (m);
-                mmx_dest = (v8i16)unpack_32_1x128 (d);
+                wf_mask = (v8i16)unpack_32_1x128 (m);
+                wf_dest = (v8i16)unpack_32_1x128 (d);
 
                 *pd = pack_1x128_32 ( (v8i16)
-                    in_over_1x128 (&mmx_src, &mmx_alpha, &mmx_mask, &mmx_dest));
+                    in_over_1x128 (&wf_src, &wf_alpha, &wf_mask, &wf_dest));
             }
 
             pd++;
@@ -3023,10 +3014,10 @@ msa_composite_over_8888_n_8888 (pixman_implementation_t *imp,
     uint32_t w;
     int dst_stride, src_stride;
 
-    v8i16 xmm_mask;
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
+    v8i16 w_mask;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -3035,7 +3026,7 @@ msa_composite_over_8888_n_8888 (pixman_implementation_t *imp,
 
     mask = _pixman_image_get_solid (imp, mask_image, PIXMAN_a8r8g8b8);
 
-    xmm_mask = create_mask_16_128 (mask >> 24);
+    w_mask = create_mask_16_128 (mask >> 24);
 
     while (height--)
     {
@@ -3059,7 +3050,7 @@ msa_composite_over_8888_n_8888 (pixman_implementation_t *imp,
 
                 ms        = (v8i16)unpack_32_1x128 (s);
                 alpha     = expand_alpha_1x128 (ms);
-                dest      = xmm_mask;
+                dest      = w_mask;
                 alpha_dst = (v8i16)unpack_32_1x128 (d);
                 
                 *dst = pack_1x128_32 ( (v8i16)
@@ -3071,24 +3062,24 @@ msa_composite_over_8888_n_8888 (pixman_implementation_t *imp,
 
         while (w >= 4)
         {
-            xmm_src = (v8i16)load_128_unaligned (src);
+            w_src = (v8i16)load_128_unaligned (src);
 
-            if (!is_zero ((v16i8)xmm_src))
+            if (!is_zero ((v16i8)w_src))
             {
-                xmm_dst = (v8i16)load_128_aligned (dst);
+                w_dst = (v8i16)load_128_aligned (dst);
                 
-                unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo,  &xmm_src_hi);
-                unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo,  &xmm_dst_hi);
-                expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                                    &xmm_alpha_lo, &xmm_alpha_hi);
+                unpack_128_2x128 ((v16i8)w_src, &w_src_lo,  &w_src_hi);
+                unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo,  &w_dst_hi);
+                expand_alpha_2x128 (w_src_lo, w_src_hi,
+                                    &w_alpha_lo, &w_alpha_hi);
                 
-                in_over_2x128 (&xmm_src_lo,   &xmm_src_hi,
-                               &xmm_alpha_lo, &xmm_alpha_hi,
-                               &xmm_mask,     &xmm_mask,
-                               &xmm_dst_lo,   &xmm_dst_hi);
+                in_over_2x128 (&w_src_lo,   &w_src_hi,
+                               &w_alpha_lo, &w_alpha_hi,
+                               &w_mask,     &w_mask,
+                               &w_dst_lo,   &w_dst_hi);
                 
                 save_128_aligned (
-                    dst, (v4i32)pack_2x128_128 ((v8i16)xmm_dst_lo, (v8i16)xmm_dst_hi));
+                    dst, (v4i32)pack_2x128_128 ((v8i16)w_dst_lo, (v8i16)w_dst_hi));
             }
                 
             dst += 4;
@@ -3110,7 +3101,7 @@ msa_composite_over_8888_n_8888 (pixman_implementation_t *imp,
 
                 ms    = (v8i16)unpack_32_1x128 (s);
                 alpha = expand_alpha_1x128 (ms);
-                mask  = xmm_mask;
+                mask  = w_mask;
                 dest  = (v8i16)unpack_32_1x128 (d);
                 
                 *dst = pack_1x128_32 ( (v8i16)
@@ -3156,12 +3147,12 @@ msa_composite_src_x888_0565 (pixman_implementation_t *imp,
 
         while (w >= 8)
         {
-            v4i32 xmm_src0, xmm_src1;
+            v4i32 w_src0, w_src1;
 
-            xmm_src0 = (v4i32)load_128_unaligned (src + 0);
-            xmm_src1 = (v4i32)load_128_unaligned (src + 1);
+            w_src0 = (v4i32)load_128_unaligned (src + 0);
+            w_src1 = (v4i32)load_128_unaligned (src + 1);
 
-            save_128_aligned ((uint32_t *)dst, (v4i32)pack_565_2packedx128_128 (xmm_src0, xmm_src1));
+            save_128_aligned ((uint32_t *)dst, (v4i32)pack_565_2packedx128_128 (w_src0, w_src1));
 
             w -= 8;
             src += 8;
@@ -3210,17 +3201,17 @@ msa_composite_src_x888_8888 (pixman_implementation_t *imp,
 
         while (w >= 16)
         {
-            v4i32 xmm_src1, xmm_src2, xmm_src3, xmm_src4;
+            v4i32 w_src1, w_src2, w_src3, w_src4;
             
-            xmm_src1 = (v4i32)load_128_unaligned ((uint32_t *)src + 0);
-            xmm_src2 = (v4i32)load_128_unaligned ((uint32_t *)src + 1);
-            xmm_src3 = (v4i32)load_128_unaligned ((uint32_t *)src + 2);
-            xmm_src4 = (v4i32)load_128_unaligned ((uint32_t *)src + 3);
+            w_src1 = (v4i32)load_128_unaligned ((uint32_t *)src + 0);
+            w_src2 = (v4i32)load_128_unaligned ((uint32_t *)src + 1);
+            w_src3 = (v4i32)load_128_unaligned ((uint32_t *)src + 2);
+            w_src4 = (v4i32)load_128_unaligned ((uint32_t *)src + 3);
             
-            save_128_aligned ((uint32_t *)dst + 0, (v4i32)__msa_or_v ((v16u8)xmm_src1, (v16u8)mask_ff000000));
-            save_128_aligned ((uint32_t *)dst + 1, (v4i32)__msa_or_v ((v16u8)xmm_src2, (v16u8)mask_ff000000));
-            save_128_aligned ((uint32_t *)dst + 2, (v4i32)__msa_or_v ((v16u8)xmm_src3, (v16u8)mask_ff000000));
-            save_128_aligned ((uint32_t *)dst + 3, (v4i32)__msa_or_v ((v16u8)xmm_src4, (v16u8)mask_ff000000));
+            save_128_aligned ((uint32_t *)dst + 0, (v4i32)__msa_or_v ((v16u8)w_src1, (v16u8)mask_ff000000));
+            save_128_aligned ((uint32_t *)dst + 1, (v4i32)__msa_or_v ((v16u8)w_src2, (v16u8)mask_ff000000));
+            save_128_aligned ((uint32_t *)dst + 2, (v4i32)__msa_or_v ((v16u8)w_src3, (v16u8)mask_ff000000));
+            save_128_aligned ((uint32_t *)dst + 3, (v4i32)__msa_or_v ((v16u8)w_src4, (v16u8)mask_ff000000));
             
             dst += 16;
             src += 16;
@@ -3248,9 +3239,9 @@ msa_composite_over_x888_n_8888 (pixman_implementation_t *imp,
     int dst_stride, src_stride;
     uint32_t w;
 
-    v8i16 xmm_mask, xmm_alpha;
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_mask, w_alpha;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -3259,8 +3250,8 @@ msa_composite_over_x888_n_8888 (pixman_implementation_t *imp,
 
     mask = _pixman_image_get_solid (imp, mask_image, PIXMAN_a8r8g8b8);
 
-    xmm_mask = create_mask_16_128 (mask >> 24);
-    xmm_alpha = mask_00ff;
+    w_mask = create_mask_16_128 (mask >> 24);
+    w_alpha = mask_00ff;
 
     while (height--)
     {
@@ -3281,8 +3272,8 @@ msa_composite_over_x888_n_8888 (pixman_implementation_t *imp,
             d = *dst;
 
             vsrc  = (v8i16)unpack_32_1x128 (s);
-            alpha = xmm_alpha;
-            mask  = xmm_mask;
+            alpha = w_alpha;
+            mask  = w_mask;
             dest  = (v8i16)unpack_32_1x128 (d);
 
             *dst++ = pack_1x128_32 ((v8i16)
@@ -3294,19 +3285,19 @@ msa_composite_over_x888_n_8888 (pixman_implementation_t *imp,
         {
            /* Note: not sure if it's gonna need to change to `vsrc`.
             * Will further check later */
-            xmm_src = (v8i16)__msa_or_v ((v16u8)load_128_unaligned (src), (v16u8)mask_ff000000);
-            xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+            w_src = (v8i16)__msa_or_v ((v16u8)load_128_unaligned (src), (v16u8)mask_ff000000);
+            w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
 
-            unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-            unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+            unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+            unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-            in_over_2x128 (&xmm_src_lo,  &xmm_src_hi,
-                           &xmm_alpha,  &xmm_alpha,
-                           &xmm_mask,  &xmm_mask,
-                           &xmm_dst_lo,  &xmm_dst_hi);
+            in_over_2x128 (&w_src_lo,  &w_src_hi,
+                           &w_alpha,  &w_alpha,
+                           &w_mask,  &w_mask,
+                           &w_dst_lo,  &w_dst_hi);
 
             save_128_aligned (
-                (int32_t *)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                (int32_t *)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
             dst += 4;
             src += 4;
@@ -3324,8 +3315,8 @@ msa_composite_over_x888_n_8888 (pixman_implementation_t *imp,
             d = *dst;
 
             vsrc  = (v8i16)unpack_32_1x128 (s);
-            alpha = xmm_alpha;
-            mask  = xmm_mask;
+            alpha = w_alpha;
+            mask  = w_mask;
             dest  = (v8i16)unpack_32_1x128 (d);
 
             *dst++ = pack_1x128_32 ( (v8i16)
@@ -3387,9 +3378,9 @@ msa_composite_over_8888_0565 (pixman_implementation_t *imp,
     int dst_stride, src_stride;
     uint32_t w;
 
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst0, xmm_dst1, xmm_dst2, xmm_dst3;
+    v8i16 w_alpha_lo, w_alpha_hi;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst0, w_dst1, w_dst2, w_dst3;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint16_t, dst_stride, dst_line, 1);
@@ -3422,37 +3413,37 @@ msa_composite_over_8888_0565 (pixman_implementation_t *imp,
             /* I'm loading unaligned because I'm not sure
              * about the address alignment.
              */
-            xmm_src = (v8i16)load_128_unaligned (src);
-            xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+            w_src = (v8i16)load_128_unaligned (src);
+            w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
 
             /* Unpacking */
-            unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-            unpack_565_128_4x128 ((v4i32)xmm_dst,
-                                  &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
-            expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                                &xmm_alpha_lo, &xmm_alpha_hi);
+            unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+            unpack_565_128_4x128 ((v4i32)w_dst,
+                                  &w_dst0, &w_dst1, &w_dst2, &w_dst3);
+            expand_alpha_2x128 (w_src_lo, w_src_hi,
+                                &w_alpha_lo, &w_alpha_hi);
 
             /* I'm loading next 4 pixels from memory
              * before to optimze the memory read.
              */
-            xmm_src = (v8i16)load_128_unaligned ((src + 4));
+            w_src = (v8i16)load_128_unaligned ((src + 4));
 
-            over_2x128 (&xmm_src_lo,   &xmm_src_hi,
-                        &xmm_alpha_lo, &xmm_alpha_hi,
-                        &xmm_dst0,     &xmm_dst1);
+            over_2x128 (&w_src_lo,   &w_src_hi,
+                        &w_alpha_lo, &w_alpha_hi,
+                        &w_dst0,     &w_dst1);
 
             /* Unpacking */
-            unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-            expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-                                &xmm_alpha_lo, &xmm_alpha_hi);
+            unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+            expand_alpha_2x128 (w_src_lo, w_src_hi,
+                                &w_alpha_lo, &w_alpha_hi);
 
-            over_2x128 (&xmm_src_lo,   &xmm_src_hi,
-                        &xmm_alpha_lo, &xmm_alpha_hi,
-                        &xmm_dst2,     &xmm_dst3);
+            over_2x128 (&w_src_lo,   &w_src_hi,
+                        &w_alpha_lo, &w_alpha_hi,
+                        &w_dst2,     &w_dst3);
 
             save_128_aligned (
                 (uint32_t *) dst, (v4i32)pack_565_4x128_128 (
-                    &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3));
+                    &w_dst0, &w_dst1, &w_dst2, &w_dst3));
 
             w -= 8;
             dst += 8;
@@ -3481,11 +3472,11 @@ msa_composite_over_n_8_8888 (pixman_implementation_t *imp,
     int32_t w;
     uint32_t d;
 
-    v8i16 xmm_src, xmm_alpha, xmm_def;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_alpha, w_def;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
-    v8i16 mmx_src, mmx_alpha, mmx_mask, mmx_dest;
+    v8i16 wf_src, wf_alpha, wf_mask, wf_dest;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -3498,11 +3489,11 @@ msa_composite_over_n_8_8888 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
 	mask_image, mask_x, mask_y, uint8_t, mask_stride, mask_line, 1);
 
-    xmm_def = (v8i16)create_mask_2x32_128 (src, src);
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
-    xmm_alpha = expand_alpha_1x128 (xmm_src);
-    mmx_src   = xmm_src;
-    mmx_alpha = xmm_alpha;
+    w_def = (v8i16)create_mask_2x32_128 (src, src);
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_alpha = expand_alpha_1x128 (w_src);
+    wf_src   = w_src;
+    wf_alpha = w_alpha;
 
     while (height--)
     {
@@ -3519,13 +3510,13 @@ msa_composite_over_n_8_8888 (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = expand_pixel_8_1x128 (m);
-		mmx_dest = (v8i16)unpack_32_1x128 (d);
+		wf_mask = expand_pixel_8_1x128 (m);
+		wf_dest = (v8i16)unpack_32_1x128 (d);
 
-		*dst = pack_1x128_32 ((v8i16)in_over_1x128 (&mmx_src,
-		                                   &mmx_alpha,
-		                                   &mmx_mask,
-		                                   &mmx_dest));
+		*dst = pack_1x128_32 ((v8i16)in_over_1x128 (&wf_src,
+		                                   &wf_alpha,
+		                                   &wf_mask,
+		                                   &wf_dest));
 	    }
 
 	    w--;
@@ -3539,28 +3530,28 @@ msa_composite_over_n_8_8888 (pixman_implementation_t *imp,
 
 	    if (srca == 0xff && m == 0xffffffff)
 	    {
-		save_128_aligned ((int32_t*)dst, (v4i32)xmm_def);
+		save_128_aligned ((int32_t*)dst, (v4i32)w_def);
 	    }
 	    else if (m)
 	    {
-		xmm_dst  = (v8i16)load_128_aligned ((int32_t*) dst);
-		xmm_mask = (v8i16)unpack_32_1x128 (m);
-		xmm_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)xmm_mask);
+		w_dst  = (v8i16)load_128_aligned ((int32_t*) dst);
+		w_mask = (v8i16)unpack_32_1x128 (m);
+		w_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)w_mask);
 
 		/* Unpacking */
-		unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
-		unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+		unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
+		unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
-		expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi,
-					&xmm_mask_lo, &xmm_mask_hi);
+		expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi,
+					&w_mask_lo, &w_mask_hi);
 
-		in_over_2x128 (&xmm_src, &xmm_src,
-			       &xmm_alpha, &xmm_alpha,
-			       &xmm_mask_lo, &xmm_mask_hi,
-			       &xmm_dst_lo, &xmm_dst_hi);
+		in_over_2x128 (&w_src, &w_src,
+			       &w_alpha, &w_alpha,
+			       &w_mask_lo, &w_mask_hi,
+			       &w_dst_lo, &w_dst_hi);
 
 		save_128_aligned (
-		    (int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		    (int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	    }
 
 	    w -= 4;
@@ -3575,13 +3566,13 @@ msa_composite_over_n_8_8888 (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = expand_pixel_8_1x128 (m);
-		mmx_dest = (v8i16)unpack_32_1x128 (d);
+		wf_mask = expand_pixel_8_1x128 (m);
+		wf_dest = (v8i16)unpack_32_1x128 (d);
 
-		*dst = pack_1x128_32 ((v8i16)in_over_1x128 (&mmx_src,
-		                                   &mmx_alpha,
-		                                   &mmx_mask,
-		                                   &mmx_dest));
+		*dst = pack_1x128_32 ((v8i16)in_over_1x128 (&wf_src,
+		                                   &wf_alpha,
+		                                   &wf_mask,
+		                                   &wf_dest));
 	    }
 
 	    w--;
@@ -3608,7 +3599,7 @@ msa_fill (pixman_implementation_t *imp,
     uint32_t byte_width;
     uint8_t *byte_line;
 
-    v4i32 xmm_def;
+    v4i32 w_def;
 
     if (bpp == 8)
     {
@@ -3645,7 +3636,7 @@ msa_fill (pixman_implementation_t *imp,
 	return FALSE;
     }
 
-    xmm_def = create_mask_2x32_128 (filler, filler);
+    w_def = create_mask_2x32_128 (filler, filler);
 
     while (height--)
     {
@@ -3678,14 +3669,14 @@ msa_fill (pixman_implementation_t *imp,
 
 	while (w >= 128)
 	{
-	    save_128_aligned ((int32_t*)(d),     xmm_def);
-	    save_128_aligned ((int32_t*)(d + 16),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 32),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 48),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 64),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 80),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 96),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 112), xmm_def);
+	    save_128_aligned ((int32_t*)(d),     w_def);
+	    save_128_aligned ((int32_t*)(d + 16),  w_def);
+	    save_128_aligned ((int32_t*)(d + 32),  w_def);
+	    save_128_aligned ((int32_t*)(d + 48),  w_def);
+	    save_128_aligned ((int32_t*)(d + 64),  w_def);
+	    save_128_aligned ((int32_t*)(d + 80),  w_def);
+	    save_128_aligned ((int32_t*)(d + 96),  w_def);
+	    save_128_aligned ((int32_t*)(d + 112), w_def);
 
 	    d += 128;
 	    w -= 128;
@@ -3693,10 +3684,10 @@ msa_fill (pixman_implementation_t *imp,
 
 	if (w >= 64)
 	{
-	    save_128_aligned ((int32_t*)(d),     xmm_def);
-	    save_128_aligned ((int32_t*)(d + 16),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 32),  xmm_def);
-	    save_128_aligned ((int32_t*)(d + 48),  xmm_def);
+	    save_128_aligned ((int32_t*)(d),     w_def);
+	    save_128_aligned ((int32_t*)(d + 16),  w_def);
+	    save_128_aligned ((int32_t*)(d + 32),  w_def);
+	    save_128_aligned ((int32_t*)(d + 48),  w_def);
 
 	    d += 64;
 	    w -= 64;
@@ -3704,8 +3695,8 @@ msa_fill (pixman_implementation_t *imp,
 
 	if (w >= 32)
 	{
-	    save_128_aligned ((int32_t*)(d),     xmm_def);
-	    save_128_aligned ((int32_t*)(d + 16),  xmm_def);
+	    save_128_aligned ((int32_t*)(d),     w_def);
+	    save_128_aligned ((int32_t*)(d + 16),  w_def);
 
 	    d += 32;
 	    w -= 32;
@@ -3713,7 +3704,7 @@ msa_fill (pixman_implementation_t *imp,
 
 	if (w >= 16)
 	{
-	    save_128_aligned ((int32_t*)(d),     xmm_def);
+	    save_128_aligned ((int32_t*)(d),     w_def);
 
 	    d += 16;
 	    w -= 16;
@@ -3756,8 +3747,8 @@ msa_composite_src_n_8_8888 (pixman_implementation_t *imp,
     int dst_stride, mask_stride;
     int32_t w;
 
-    v8i16 xmm_src, xmm_def;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_def;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -3775,8 +3766,8 @@ msa_composite_src_n_8_8888 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
 	mask_image, mask_x, mask_y, uint8_t, mask_stride, mask_line, 1);
 
-    xmm_def = (v8i16)create_mask_2x32_128 (src, src);
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_def = (v8i16)create_mask_2x32_128 (src, src);
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
 
     while (height--)
     {
@@ -3793,7 +3784,7 @@ msa_composite_src_n_8_8888 (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		*dst = pack_1x128_32 (
-		    (v8i16)pix_multiply_1x128 (xmm_src, expand_pixel_8_1x128 (m)));
+		    (v8i16)pix_multiply_1x128 (w_src, expand_pixel_8_1x128 (m)));
 	    }
 	    else
 	    {
@@ -3811,25 +3802,25 @@ msa_composite_src_n_8_8888 (pixman_implementation_t *imp,
 
 	    if (srca == 0xff && m == 0xffffffff)
 	    {
-		save_128_aligned ((int32_t*)dst, (v4i32)xmm_def);
+		save_128_aligned ((int32_t*)dst, (v4i32)w_def);
 	    }
 	    else if (m)
 	    {
-		xmm_mask = (v8i16)unpack_32_1x128 (m);
-		xmm_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)xmm_mask);
+		w_mask = (v8i16)unpack_32_1x128 (m);
+		w_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)w_mask);
 
 		/* Unpacking */
-		unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+		unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
-		expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi,
-					&xmm_mask_lo, &xmm_mask_hi);
+		expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi,
+					&w_mask_lo, &w_mask_hi);
 
-		pix_multiply_2x128 (&xmm_src, &xmm_src,
-				    &xmm_mask_lo, &xmm_mask_hi,
-				    &xmm_mask_lo, &xmm_mask_hi);
+		pix_multiply_2x128 (&w_src, &w_src,
+				    &w_mask_lo, &w_mask_hi,
+				    &w_mask_lo, &w_mask_hi);
 
 		save_128_aligned (
-		    (int32_t*)dst, (v4i32)pack_2x128_128 (xmm_mask_lo, xmm_mask_hi));
+		    (int32_t*)dst, (v4i32)pack_2x128_128 (w_mask_lo, w_mask_hi));
 	    }
 	    else
 	    {
@@ -3850,7 +3841,7 @@ msa_composite_src_n_8_8888 (pixman_implementation_t *imp,
 	    {
 		*dst = pack_1x128_32 (
 		    (v8i16)pix_multiply_1x128 (
-			xmm_src, expand_pixel_8_1x128 (m)));
+			w_src, expand_pixel_8_1x128 (m)));
 	    }
 	    else
 	    {
@@ -3874,11 +3865,11 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
     uint8_t  *mask_line, *mask;
     int       dst_stride, mask_stride;
     int32_t   w;
-    v8i16 mmx_src, mmx_alpha, mmx_mask, mmx_dest;
+    v8i16 wf_src, wf_alpha, wf_mask, wf_dest;
 
-    v8i16 xmm_src, xmm_alpha;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
-    v8i16 xmm_dst, xmm_dst0, xmm_dst1, xmm_dst2, xmm_dst3;
+    v8i16 w_src, w_alpha;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
+    v8i16 w_dst, w_dst0, w_dst1, w_dst2, w_dst3;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -3890,10 +3881,10 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
 	mask_image, mask_x, mask_y, uint8_t, mask_stride, mask_line, 1);
 
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
-    xmm_alpha = expand_alpha_1x128 (xmm_src);
-    mmx_src = xmm_src;
-    mmx_alpha = xmm_alpha;
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_alpha = expand_alpha_1x128 (w_src);
+    wf_src = w_src;
+    wf_alpha = w_alpha;
 
     while (height--)
     {
@@ -3910,13 +3901,13 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = expand_alpha_rev_1x128 ((v8i16)unpack_32_1x128 (m));
-		mmx_dest = (v8i16)expand565_16_1x128 (d);
+		wf_mask = expand_alpha_rev_1x128 ((v8i16)unpack_32_1x128 (m));
+		wf_dest = (v8i16)expand565_16_1x128 (d);
 
 		*dst = pack_565_32_16 (
 		    pack_1x128_32 (
 			(v8i16)in_over_1x128 (
-			    &mmx_src, &mmx_alpha, &mmx_mask, &mmx_dest)));
+			    &wf_src, &wf_alpha, &wf_mask, &wf_dest)));
 	    }
 
 	    w--;
@@ -3927,28 +3918,28 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
 	{
             uint32_t m;
 
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*) dst);
-	    unpack_565_128_4x128 ((v4i32)xmm_dst,
-				  &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*) dst);
+	    unpack_565_128_4x128 ((v4i32)w_dst,
+				  &w_dst0, &w_dst1, &w_dst2, &w_dst3);
 
             memcpy(&m, mask, sizeof(uint32_t));
 	    mask += 4;
 
 	    if (m)
 	    {
-		xmm_mask = (v8i16)unpack_32_1x128 (m);
-		xmm_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)xmm_mask);
+		w_mask = (v8i16)unpack_32_1x128 (m);
+		w_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)w_mask);
 
 		/* Unpacking */
-		unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+		unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
-		expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi,
-					&xmm_mask_lo, &xmm_mask_hi);
+		expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi,
+					&w_mask_lo, &w_mask_hi);
 
-		in_over_2x128 (&xmm_src, &xmm_src,
-			       &xmm_alpha, &xmm_alpha,
-			       &xmm_mask_lo, &xmm_mask_hi,
-			       &xmm_dst0, &xmm_dst1);
+		in_over_2x128 (&w_src, &w_src,
+			       &w_alpha, &w_alpha,
+			       &w_mask_lo, &w_mask_hi,
+			       &w_dst0, &w_dst1);
 	    }
 
             memcpy(&m, mask, sizeof(uint32_t));
@@ -3956,23 +3947,23 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
 
 	    if (m)
 	    {
-		xmm_mask = (v8i16)unpack_32_1x128 (m);
-		xmm_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)xmm_mask);
+		w_mask = (v8i16)unpack_32_1x128 (m);
+		w_mask = (v8i16)__msa_ilvr_b (__msa_fill_b (0), (v16i8)w_mask);
 
 		/* Unpacking */
-		unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+		unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
-		expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi,
-					&xmm_mask_lo, &xmm_mask_hi);
-		in_over_2x128 (&xmm_src, &xmm_src,
-			       &xmm_alpha, &xmm_alpha,
-			       &xmm_mask_lo, &xmm_mask_hi,
-			       &xmm_dst2, &xmm_dst3);
+		expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi,
+					&w_mask_lo, &w_mask_hi);
+		in_over_2x128 (&w_src, &w_src,
+			       &w_alpha, &w_alpha,
+			       &w_mask_lo, &w_mask_hi,
+			       &w_dst2, &w_dst3);
 	    }
 
 	    save_128_aligned (
 		(int32_t*)dst, (v4i32)pack_565_4x128_128 (
-		    &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3));
+		    &w_dst0, &w_dst1, &w_dst2, &w_dst3));
 
 	    w -= 8;
 	    dst += 8;
@@ -3986,13 +3977,13 @@ msa_composite_over_n_8_0565 (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = expand_alpha_rev_1x128 ((v8i16)unpack_32_1x128 (m));
-		mmx_dest = (v8i16)expand565_16_1x128 (d);
+		wf_mask = expand_alpha_rev_1x128 ((v8i16)unpack_32_1x128 (m));
+		wf_dest = (v8i16)expand565_16_1x128 (d);
 
 		*dst = pack_565_32_16 (
 		    pack_1x128_32 (
 			(v8i16)in_over_1x128 (
-			    &mmx_src, &mmx_alpha, &mmx_mask, &mmx_dest)));
+			    &wf_src, &wf_alpha, &wf_mask, &wf_dest)));
 	    }
 
 	    w--;
@@ -4014,8 +4005,8 @@ msa_composite_over_pixbuf_0565 (pixman_implementation_t *imp,
     uint32_t opaque, zero;
 
     v8i16 ms;
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst0, xmm_dst1, xmm_dst2, xmm_dst3;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst0, w_dst1, w_dst2, w_dst3;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint16_t, dst_stride, dst_line, 1);
@@ -4046,50 +4037,50 @@ msa_composite_over_pixbuf_0565 (pixman_implementation_t *imp,
 	while (w >= 8)
 	{
 	    /* First round */
-	    xmm_src = (v8i16)load_128_unaligned ((uint32_t*)src);
-	    xmm_dst = (v8i16)load_128_aligned  ((int32_t*)dst);
+	    w_src = (v8i16)load_128_unaligned ((uint32_t*)src);
+	    w_dst = (v8i16)load_128_aligned  ((int32_t*)dst);
 
-	    opaque = (uint32_t)is_opaque ((v16i8)xmm_src);
-	    zero   = (uint32_t)is_zero ((v16i8)xmm_src);
+	    opaque = (uint32_t)is_opaque ((v16i8)w_src);
+	    zero   = (uint32_t)is_zero ((v16i8)w_src);
 
-	    unpack_565_128_4x128 ((v4i32)xmm_dst,
-				  &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
-	    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
+	    unpack_565_128_4x128 ((v4i32)w_dst,
+				  &w_dst0, &w_dst1, &w_dst2, &w_dst3);
+	    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
 
 	    /* preload next round*/
-	    xmm_src = (v8i16)load_128_unaligned ((uint32_t*)(src + 4));
+	    w_src = (v8i16)load_128_unaligned ((uint32_t*)(src + 4));
 
 	    if (opaque)
 	    {
-		invert_colors_2x128 (xmm_src_lo, xmm_src_hi,
-				     &xmm_dst0, &xmm_dst1);
+		invert_colors_2x128 (w_src_lo, w_src_hi,
+				     &w_dst0, &w_dst1);
 	    }
 	    else if (!zero)
 	    {
-		over_rev_non_pre_2x128 (xmm_src_lo, xmm_src_hi,
-					&xmm_dst0, &xmm_dst1);
+		over_rev_non_pre_2x128 (w_src_lo, w_src_hi,
+					&w_dst0, &w_dst1);
 	    }
 
 	    /* Second round */
-	    opaque = (uint32_t)is_opaque ((v16i8)xmm_src);
-	    zero = (uint32_t)is_zero ((v16i8)xmm_src);
+	    opaque = (uint32_t)is_opaque ((v16i8)w_src);
+	    zero = (uint32_t)is_zero ((v16i8)w_src);
 
-	    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
+	    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
 
 	    if (opaque)
 	    {
-		invert_colors_2x128 (xmm_src_lo, xmm_src_hi,
-				     &xmm_dst2, &xmm_dst3);
+		invert_colors_2x128 (w_src_lo, w_src_hi,
+				     &w_dst2, &w_dst3);
 	    }
 	    else if (!zero)
 	    {
-		over_rev_non_pre_2x128 (xmm_src_lo, xmm_src_hi,
-					&xmm_dst2, &xmm_dst3);
+		over_rev_non_pre_2x128 (w_src_lo, w_src_hi,
+					&w_dst2, &w_dst3);
 	    }
 
 	    save_128_aligned (
 		(int32_t*)dst, (v4i32)pack_565_4x128_128 (
-		    &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3));
+		    &w_dst0, &w_dst1, &w_dst2, &w_dst3));
 
 	    w -= 8;
 	    src += 8;
@@ -4123,8 +4114,8 @@ msa_composite_over_pixbuf_8888 (pixman_implementation_t *imp,
     int32_t w;
     uint32_t opaque, zero;
 
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -4153,32 +4144,32 @@ msa_composite_over_pixbuf_8888 (pixman_implementation_t *imp,
 
 	while (w >= 4)
 	{
-	    xmm_src_hi = (v8i16)load_128_unaligned ((uint32_t*)src);
+	    w_src_hi = (v8i16)load_128_unaligned ((uint32_t*)src);
 
-	    opaque = (uint32_t)is_opaque ((v16i8)xmm_src_hi);
-	    zero = (uint32_t)is_zero ((v16i8)xmm_src_hi);
+	    opaque = (uint32_t)is_opaque ((v16i8)w_src_hi);
+	    zero = (uint32_t)is_zero ((v16i8)w_src_hi);
 
-	    unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
+	    unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
 
 	    if (opaque)
 	    {
-		invert_colors_2x128 (xmm_src_lo, xmm_src_hi,
-				     &xmm_dst_lo, &xmm_dst_hi);
+		invert_colors_2x128 (w_src_lo, w_src_hi,
+				     &w_dst_lo, &w_dst_hi);
 
 		save_128_aligned (
-		    (int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		    (int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	    }
 	    else if (!zero)
 	    {
-		xmm_dst_hi = (v8i16)load_128_aligned  ((int32_t*)dst);
+		w_dst_hi = (v8i16)load_128_aligned  ((int32_t*)dst);
 
-		unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+		unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
-		over_rev_non_pre_2x128 (xmm_src_lo, xmm_src_hi,
-					&xmm_dst_lo, &xmm_dst_hi);
+		over_rev_non_pre_2x128 (w_src_lo, w_src_hi,
+					&w_dst_lo, &w_dst_hi);
 
 		save_128_aligned (
-		    (int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		    (int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	    }
 
 	    w -= 4;
@@ -4213,11 +4204,11 @@ msa_composite_over_n_8888_0565_ca (pixman_implementation_t *imp,
     int w;
     uint32_t pack_cmp;
 
-    v8i16 xmm_src, xmm_alpha;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
-    v8i16 xmm_dst, xmm_dst0, xmm_dst1, xmm_dst2, xmm_dst3;
+    v8i16 w_src, w_alpha;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
+    v8i16 w_dst, w_dst0, w_dst1, w_dst2, w_dst3;
 
-    v8i16 mmx_src, mmx_alpha, mmx_mask, mmx_dest;
+    v8i16 wf_src, wf_alpha, wf_mask, wf_dest;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
@@ -4229,10 +4220,10 @@ msa_composite_over_n_8888_0565_ca (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
 	mask_image, mask_x, mask_y, uint32_t, mask_stride, mask_line, 1);
 
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
-    xmm_alpha = expand_alpha_1x128 (xmm_src);
-    mmx_src = xmm_src;
-    mmx_alpha = xmm_alpha;
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_alpha = expand_alpha_1x128 (w_src);
+    wf_src = w_src;
+    wf_alpha = w_alpha;
 
     while (height--)
     {
@@ -4249,13 +4240,13 @@ msa_composite_over_n_8888_0565_ca (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = (v8i16)unpack_32_1x128 (m);
-		mmx_dest = (v8i16)expand565_16_1x128 (d);
+		wf_mask = (v8i16)unpack_32_1x128 (m);
+		wf_dest = (v8i16)expand565_16_1x128 (d);
 
 		*dst = pack_565_32_16 (
 		    pack_1x128_32 (
 			(v8i16)in_over_1x128 (
-			    &mmx_src, &mmx_alpha, &mmx_mask, &mmx_dest)));
+			    &wf_src, &wf_alpha, &wf_mask, &wf_dest)));
 	    }
 
 	    w--;
@@ -4266,43 +4257,43 @@ msa_composite_over_n_8888_0565_ca (pixman_implementation_t *imp,
 	while (w >= 8)
 	{
 	    /* First round */
-	    xmm_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
-	    xmm_dst  = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
+	    w_dst  = (v8i16)load_128_aligned ((int32_t*)dst);
 
-		pack_cmp = (uint32_t)is_zero((v16i8)xmm_mask);
+		pack_cmp = (uint32_t)is_zero((v16i8)w_mask);
 
-	    unpack_565_128_4x128 ((v4i32)xmm_dst,
-				  &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3);
-	    unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+	    unpack_565_128_4x128 ((v4i32)w_dst,
+				  &w_dst0, &w_dst1, &w_dst2, &w_dst3);
+	    unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
 	    /* preload next round */
-	    xmm_mask = (v8i16)load_128_unaligned ((uint32_t*)(mask + 4));
+	    w_mask = (v8i16)load_128_unaligned ((uint32_t*)(mask + 4));
 
 	    /* preload next round */
 	    if (pack_cmp == 0x0000)
 	    {
-		in_over_2x128 (&xmm_src, &xmm_src,
-			       &xmm_alpha, &xmm_alpha,
-			       &xmm_mask_lo, &xmm_mask_hi,
-			       &xmm_dst0, &xmm_dst1);
+		in_over_2x128 (&w_src, &w_src,
+			       &w_alpha, &w_alpha,
+			       &w_mask_lo, &w_mask_hi,
+			       &w_dst0, &w_dst1);
 	    }
 
 	    /* Second round */
-		pack_cmp = (uint32_t)is_zero((v16i8)xmm_mask);
+		pack_cmp = (uint32_t)is_zero((v16i8)w_mask);
 
-	    unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
+	    unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
 
 	    if (pack_cmp == 0x0000)
 	    {
-		in_over_2x128 (&xmm_src, &xmm_src,
-			       &xmm_alpha, &xmm_alpha,
-			       &xmm_mask_lo, &xmm_mask_hi,
-			       &xmm_dst2, &xmm_dst3);
+		in_over_2x128 (&w_src, &w_src,
+			       &w_alpha, &w_alpha,
+			       &w_mask_lo, &w_mask_hi,
+			       &w_dst2, &w_dst3);
 	    }
 
 	    save_128_aligned (
 		(int32_t*)dst, (v4i32)pack_565_4x128_128 (
-		    &xmm_dst0, &xmm_dst1, &xmm_dst2, &xmm_dst3));
+		    &w_dst0, &w_dst1, &w_dst2, &w_dst3));
 
 	    w -= 8;
 	    dst += 8;
@@ -4316,13 +4307,13 @@ msa_composite_over_n_8888_0565_ca (pixman_implementation_t *imp,
 	    if (m)
 	    {
 		d = *dst;
-		mmx_mask = (v8i16)unpack_32_1x128 (m);
-		mmx_dest = (v8i16)expand565_16_1x128 (d);
+		wf_mask = (v8i16)unpack_32_1x128 (m);
+		wf_dest = (v8i16)expand565_16_1x128 (d);
 
 		*dst = pack_565_32_16 (
 		    pack_1x128_32 (
 			(v8i16)in_over_1x128 (
-			    &mmx_src, &mmx_alpha, &mmx_mask, &mmx_dest)));
+			    &wf_src, &wf_alpha, &wf_mask, &wf_dest)));
 	    }
 
 	    w--;
@@ -4345,9 +4336,9 @@ msa_composite_in_n_8_8 (pixman_implementation_t *imp,
     uint32_t src;
     int32_t w;
 
-    v8i16 xmm_alpha;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_alpha;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint8_t, dst_stride, dst_line, 1);
@@ -4356,7 +4347,7 @@ msa_composite_in_n_8_8 (pixman_implementation_t *imp,
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
-    xmm_alpha = expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
+    w_alpha = expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
 
     while (height--)
     {
@@ -4373,7 +4364,7 @@ msa_composite_in_n_8_8 (pixman_implementation_t *imp,
 
 	    *dst++ = (uint8_t) pack_1x128_32 (
 		(v8i16)pix_multiply_1x128 (
-		    (v8i16)pix_multiply_1x128 (xmm_alpha,
+		    (v8i16)pix_multiply_1x128 (w_alpha,
 				       (v8i16)unpack_32_1x128 (m)),
 		    (v8i16)unpack_32_1x128 (d)));
 	    w--;
@@ -4381,22 +4372,22 @@ msa_composite_in_n_8_8 (pixman_implementation_t *imp,
 
 	while (w >= 16)
 	{
-	    xmm_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+	    unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-	    pix_multiply_2x128 (&xmm_alpha, &xmm_alpha,
-				&xmm_mask_lo, &xmm_mask_hi,
-				&xmm_mask_lo, &xmm_mask_hi);
+	    pix_multiply_2x128 (&w_alpha, &w_alpha,
+				&w_mask_lo, &w_mask_hi,
+				&w_mask_lo, &w_mask_hi);
 
-	    pix_multiply_2x128 (&xmm_mask_lo, &xmm_mask_hi,
-				&xmm_dst_lo, &xmm_dst_hi,
-				&xmm_dst_lo, &xmm_dst_hi);
+	    pix_multiply_2x128 (&w_mask_lo, &w_mask_hi,
+				&w_dst_lo, &w_dst_hi,
+				&w_dst_lo, &w_dst_hi);
 
 	    save_128_aligned (
-		(int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		(int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	    mask += 16;
 	    dst += 16;
@@ -4412,7 +4403,7 @@ msa_composite_in_n_8_8 (pixman_implementation_t *imp,
 	    *dst++ = (uint8_t) pack_1x128_32 (
 		(v8i16)pix_multiply_1x128 (
 		    (v8i16)pix_multiply_1x128 (
-			(v8i16)xmm_alpha, (v8i16)unpack_32_1x128 (m)),
+			(v8i16)w_alpha, (v8i16)unpack_32_1x128 (m)),
 		    (v8i16)unpack_32_1x128 (d)));
 	    w--;
 	}
@@ -4431,15 +4422,15 @@ msa_composite_in_n_8 (pixman_implementation_t *imp,
     uint32_t src;
     int32_t w;
 
-    v8i16 xmm_alpha;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_alpha;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint8_t, dst_stride, dst_line, 1);
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
-    xmm_alpha = expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
+    w_alpha = expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
 
     src = src >> 24;
 
@@ -4466,23 +4457,23 @@ msa_composite_in_n_8 (pixman_implementation_t *imp,
 
 	    *dst++ = (uint8_t) pack_1x128_32 (
 		(v8i16)pix_multiply_1x128 (
-		    xmm_alpha,
+		    w_alpha,
 		    (v8i16)unpack_32_1x128 (d)));
 	    w--;
 	}
 
 	while (w >= 16)
 	{
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 	    
-	    pix_multiply_2x128 (&xmm_alpha, &xmm_alpha,
-				&xmm_dst_lo, &xmm_dst_hi,
-				&xmm_dst_lo, &xmm_dst_hi);
+	    pix_multiply_2x128 (&w_alpha, &w_alpha,
+				&w_dst_lo, &w_dst_hi,
+				&w_dst_lo, &w_dst_hi);
 
 	    save_128_aligned (
-		(int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		(int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	    dst += 16;
 	    w -= 16;
@@ -4494,7 +4485,7 @@ msa_composite_in_n_8 (pixman_implementation_t *imp,
 
 	    *dst++ = (uint8_t) pack_1x128_32 (
 		(v8i16)pix_multiply_1x128 (
-		    xmm_alpha,
+		    w_alpha,
 		    (v8i16)unpack_32_1x128 (d)));
 	    w--;
 	}
@@ -4513,8 +4504,8 @@ msa_composite_in_8_8 (pixman_implementation_t *imp,
     int32_t w;
     uint32_t s, d;
 
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint8_t, dst_stride, dst_line, 1);
@@ -4542,18 +4533,18 @@ msa_composite_in_8_8 (pixman_implementation_t *imp,
 
 	while (w >= 16)
 	{
-	    xmm_src = (v8i16)load_128_unaligned ((uint32_t*)src);
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_src = (v8i16)load_128_unaligned ((uint32_t*)src);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+	    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-	    pix_multiply_2x128 (&xmm_src_lo, &xmm_src_hi,
-				&xmm_dst_lo, &xmm_dst_hi,
-				&xmm_dst_lo, &xmm_dst_hi);
+	    pix_multiply_2x128 (&w_src_lo, &w_src_hi,
+				&w_dst_lo, &w_dst_hi,
+				&w_dst_lo, &w_dst_hi);
 
 	    save_128_aligned (
-		(int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		(int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
 	    src += 16;
 	    dst += 16;
@@ -4585,9 +4576,9 @@ msa_composite_add_n_8_8 (pixman_implementation_t *imp,
     uint32_t src;
     uint32_t d;
 
-    v8i16 xmm_alpha;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
+    v8i16 w_alpha;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint8_t, dst_stride, dst_line, 1);
@@ -4596,7 +4587,7 @@ msa_composite_add_n_8_8 (pixman_implementation_t *imp,
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
 
-    xmm_alpha = (v8i16)expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
+    w_alpha = (v8i16)expand_alpha_1x128 ((v8i16)expand_pixel_32_1x128 (src));
 
     while (height--)
     {
@@ -4615,28 +4606,28 @@ msa_composite_add_n_8_8 (pixman_implementation_t *imp,
             *dst++ = (uint8_t) pack_1x128_32 (
                 __msa_adds_s_h (
                     (v8i16)pix_multiply_1x128 (
-                        xmm_alpha, (v8i16)unpack_32_1x128 (m)),
+                        w_alpha, (v8i16)unpack_32_1x128 (m)),
                     (v8i16)unpack_32_1x128 (d)));
             w--;
         }
 
         while (w >= 16)
         {
-            xmm_mask = (v8i16)load_128_unaligned (mask);
-            xmm_dst  = (v8i16)load_128_aligned ((int32_t *)dst);
+            w_mask = (v8i16)load_128_unaligned (mask);
+            w_dst  = (v8i16)load_128_aligned ((int32_t *)dst);
 
-            unpack_128_2x128 ((v16i8)xmm_mask,  &xmm_mask_lo, &xmm_mask_hi);
-            unpack_128_2x128 ((v16i8)xmm_dst,  &xmm_dst_lo, &xmm_dst_hi);
+            unpack_128_2x128 ((v16i8)w_mask,  &w_mask_lo, &w_mask_hi);
+            unpack_128_2x128 ((v16i8)w_dst,  &w_dst_lo, &w_dst_hi);
 
-            pix_multiply_2x128 (&xmm_alpha, &xmm_alpha,
-                                &xmm_mask_lo, &xmm_mask_hi,
-                                &xmm_mask_lo, &xmm_mask_hi);
+            pix_multiply_2x128 (&w_alpha, &w_alpha,
+                                &w_mask_lo, &w_mask_hi,
+                                &w_mask_lo, &w_mask_hi);
 
-            xmm_dst_lo = (v8i16)__msa_adds_s_h (xmm_mask_lo, xmm_dst_lo);
-            xmm_dst_hi = (v8i16)__msa_adds_s_h (xmm_mask_hi, xmm_dst_hi);
+            w_dst_lo = (v8i16)__msa_adds_s_h (w_mask_lo, w_dst_lo);
+            w_dst_hi = (v8i16)__msa_adds_s_h (w_mask_hi, w_dst_hi);
 
             save_128_aligned (
-                (int32_t *)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                (int32_t *)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 
             mask += 16;
             dst += 16;
@@ -4651,7 +4642,7 @@ msa_composite_add_n_8_8 (pixman_implementation_t *imp,
 
             *dst++ = (int8_t) pack_1x128_32 (
                 __msa_adds_s_h ( 
-                    (v8i16)pix_multiply_1x128 (xmm_alpha, (v8i16)unpack_32_1x128 (m)),
+                    (v8i16)pix_multiply_1x128 (w_alpha, (v8i16)unpack_32_1x128 (m)),
                     (v8i16)unpack_32_1x128 (d)));
             w--;
         }
@@ -4668,7 +4659,7 @@ msa_composite_add_n_8 (pixman_implementation_t *imp,
     uint32_t w;
     uint32_t src;
 
-    v4i32 xmm_src;
+    v4i32 w_src;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint8_t, dst_stride, dst_line, 1);
@@ -4689,7 +4680,7 @@ msa_composite_add_n_8 (pixman_implementation_t *imp,
     }
 
     src = (src << 24) | (src << 16) | (src << 8) | src;
-    xmm_src = __msa_fill_w (src);
+    w_src = __msa_fill_w (src);
 
     while (height--)
     {
@@ -4702,7 +4693,7 @@ msa_composite_add_n_8 (pixman_implementation_t *imp,
         {
             tmp = zero;
             *dst = (int8_t) __msa_copy_s_b (
-                __msa_adds_s_b ( (v16i8)xmm_src, (v16i8)__msa_insert_w (tmp, 0, *dst)),
+                __msa_adds_s_b ( (v16i8)w_src, (v16i8)__msa_insert_w (tmp, 0, *dst)),
                 0);
 
             w--;
@@ -4712,7 +4703,7 @@ msa_composite_add_n_8 (pixman_implementation_t *imp,
         while (w >= 16)
         {
             save_128_aligned (
-                (int32_t *)dst, __msa_adds_s_w (xmm_src,  load_128_aligned ((int32_t *)dst)));
+                (int32_t *)dst, __msa_adds_s_w (w_src,  load_128_aligned ((int32_t *)dst)));
 
             dst += 16;
             w -= 16;
@@ -4722,7 +4713,7 @@ msa_composite_add_n_8 (pixman_implementation_t *imp,
         {
             tmp = zero;
             *dst = (int8_t) __msa_copy_s_b (
-                __msa_adds_s_b ((v16i8)xmm_src, (v16i8)__msa_insert_w (tmp, 0, *dst)),
+                __msa_adds_s_b ((v16i8)w_src, (v16i8)__msa_insert_w (tmp, 0, *dst)),
                 0);
 
             w--;
@@ -4818,7 +4809,7 @@ msa_composite_add_n_8888 (pixman_implementation_t *imp,
     uint32_t *dst_line, *dst, src;
     int dst_stride;
 
-    v4i32 xmm_src;
+    v4i32 w_src;
 
     PIXMAN_IMAGE_GET_LINE (dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
 
@@ -4834,7 +4825,7 @@ msa_composite_add_n_8888 (pixman_implementation_t *imp,
         return;
     }
 
-    xmm_src = __msa_fill_w (src);
+    w_src = __msa_fill_w (src);
     while (height--)
     {
         int w = width;
@@ -4849,7 +4840,7 @@ msa_composite_add_n_8888 (pixman_implementation_t *imp,
             temp = zero;
             d = *dst;
             *dst++ = 
-                __msa_copy_s_w ((v4i32)__msa_adds_u_b ((v16u8)xmm_src, (v16u8)__msa_insert_w (temp, 0, d)), 0);
+                __msa_copy_s_w ((v4i32)__msa_adds_u_b ((v16u8)w_src, (v16u8)__msa_insert_w (temp, 0, d)), 0);
             w--;
         }
 
@@ -4858,7 +4849,7 @@ msa_composite_add_n_8888 (pixman_implementation_t *imp,
             
             save_128_aligned
                 ((uint32_t *)dst,
-                (v4i32)__msa_adds_u_b ((v16u8)xmm_src, (v16u8)load_128_aligned ((uint32_t *)dst)));
+                (v4i32)__msa_adds_u_b ((v16u8)w_src, (v16u8)load_128_aligned ((uint32_t *)dst)));
 
             dst += 4;
             w -= 4;
@@ -4869,7 +4860,7 @@ msa_composite_add_n_8888 (pixman_implementation_t *imp,
             temp = zero;
             d = *dst;
             *dst++ = 
-                __msa_copy_s_w ((v4i32)__msa_adds_u_b ((v16u8)xmm_src, (v16u8)__msa_insert_w (temp, 0, d)), 0);
+                __msa_copy_s_w ((v4i32)__msa_adds_u_b ((v16u8)w_src, (v16u8)__msa_insert_w (temp, 0, d)), 0);
         }
     }
 }
@@ -4886,12 +4877,12 @@ msa_composite_add_n_8_8888 (pixman_implementation_t *imp,
     uint32_t w;
     uint32_t src;
 
-    v4i32 xmm_src;
+    v4i32 w_src;
 
     src = _pixman_image_get_solid (imp, src_image, dest_image->bits.format);
     if (src == 0)
         return;
-    xmm_src = expand_pixel_32_1x128 (src);
+    w_src = expand_pixel_32_1x128 (src);
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -4914,7 +4905,7 @@ msa_composite_add_n_8_8888 (pixman_implementation_t *imp,
             {
                 *dst = pack_1x128_32
                     ((v8i16)__msa_adds_u_h
-                     (pix_multiply_1x128 ((v8i16)xmm_src, (v8i16)expand_pixel_8_1x128 (m)),
+                     (pix_multiply_1x128 ((v8i16)w_src, (v8i16)expand_pixel_8_1x128 (m)),
                       (v8u16)unpack_32_1x128 (*dst)));
             }
             dst++;
@@ -4928,29 +4919,29 @@ msa_composite_add_n_8_8888 (pixman_implementation_t *imp,
 
             if (m)
             {
-                v8i16 xmm_mask_lo, xmm_mask_hi;
-                v8i16 xmm_dst_lo, xmm_dst_hi;
+                v8i16 w_mask_lo, w_mask_hi;
+                v8i16 w_dst_lo, w_dst_hi;
 
-                v8i16 xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
-                v16i8 xmm_mask =
+                v8i16 w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+                v16i8 w_mask =
                     __msa_ilvr_b (unpack_32_1x128 (m),
                                        (v16i8)zero);
 
-                unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-                unpack_128_2x128 ((v16i8)xmm_dst,  &xmm_dst_lo,  &xmm_dst_hi);
+                unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+                unpack_128_2x128 ((v16i8)w_dst,  &w_dst_lo,  &w_dst_hi);
 
-                expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi,
-                                        &xmm_mask_lo, &xmm_mask_hi);
+                expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi,
+                                        &w_mask_lo, &w_mask_hi);
 
-                pix_multiply_2x128 (&xmm_src,      &xmm_src,
-                                    &xmm_mask_lo,  &xmm_mask_hi,
-                                    &xmm_mask_lo,  &xmm_mask_hi);
+                pix_multiply_2x128 (&w_src,      &w_src,
+                                    &w_mask_lo,  &w_mask_hi,
+                                    &w_mask_lo,  &w_mask_hi);
 
-                xmm_dst_lo = (v8i16)__msa_adds_u_h ((v8u16)xmm_mask_lo, (v8u16)xmm_dst_lo);
-                xmm_dst_hi = (v8i16)__msa_adds_u_h ((v8u16)xmm_mask_hi, (v8u16)xmm_dst_hi);
+                w_dst_lo = (v8i16)__msa_adds_u_h ((v8u16)w_mask_lo, (v8u16)w_dst_lo);
+                w_dst_hi = (v8i16)__msa_adds_u_h ((v8u16)w_mask_hi, (v8u16)w_dst_hi);
 
                 save_128_aligned (
-                    (uint32_t *)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                    (uint32_t *)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
             }
 
             w -= 4;
@@ -4966,7 +4957,7 @@ msa_composite_add_n_8_8888 (pixman_implementation_t *imp,
             {
                 *dst = pack_1x128_32
                     ((v8i16)__msa_adds_u_h
-                     (pix_multiply_1x128 ((v8i16)xmm_src, expand_pixel_8_1x128 (m)),
+                     (pix_multiply_1x128 ((v8i16)w_src, expand_pixel_8_1x128 (m)),
                       (v8u16)unpack_32_1x128 (*dst)));
             }
             dst++;
@@ -5051,17 +5042,17 @@ msa_blt (pixman_implementation_t *imp,
 
         while (w >= 64)
         {
-            v4i32 xmm0, xmm1, xmm2, xmm3;
+            v4i32 w0, w1, w2, w3;
 
-            xmm0 = (v4i32)load_128_unaligned ((s));
-            xmm1 = (v4i32)load_128_unaligned ((s + 16));
-            xmm2 = (v4i32)load_128_unaligned ((s + 32));
-            xmm3 = (v4i32)load_128_unaligned ((s + 48));
+            w0 = (v4i32)load_128_unaligned ((s));
+            w1 = (v4i32)load_128_unaligned ((s + 16));
+            w2 = (v4i32)load_128_unaligned ((s + 32));
+            w3 = (v4i32)load_128_unaligned ((s + 48));
 
-            save_128_aligned ((uint32_t *) (d),    xmm0);
-            save_128_aligned ((uint32_t *) (d + 16), xmm1);
-            save_128_aligned ((uint32_t *) (d + 32), xmm2);
-            save_128_aligned ((uint32_t *) (d + 48), xmm3);
+            save_128_aligned ((uint32_t *) (d),    w0);
+            save_128_aligned ((uint32_t *) (d + 16), w1);
+            save_128_aligned ((uint32_t *) (d + 32), w2);
+            save_128_aligned ((uint32_t *) (d + 48), w3);
 
             s += 64;
             d += 64;
@@ -5125,9 +5116,9 @@ msa_composite_over_x888_8_8888 (pixman_implementation_t *imp,
     uint32_t w;
     v16i8 ms;
 
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -5171,31 +5162,31 @@ msa_composite_over_x888_8_8888 (pixman_implementation_t *imp,
         {
             uint32_t m;
             memcpy(&m, mask, sizeof(uint32_t));
-            xmm_src = (v8i16)__msa_or_v (
+            w_src = (v8i16)__msa_or_v (
                 (v16u8)load_128_unaligned ((uint32_t *)src), (v16u8)mask_ff000000);
 
             if (m == 0xffffffff)
             {
-                save_128_aligned (dst, (v4i32)xmm_src);
+                save_128_aligned (dst, (v4i32)w_src);
             }
             else
             {
-                xmm_dst = (v8i16)load_128_aligned (dst);
+                w_dst = (v8i16)load_128_aligned (dst);
 
-                xmm_mask = __msa_ilvr_h ((v8i16)unpack_32_1x128 (m), (v8i16)zero);
+                w_mask = __msa_ilvr_h ((v8i16)unpack_32_1x128 (m), (v8i16)zero);
 
-                unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-                unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-                unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+                unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+                unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+                unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
                 expand_alpha_rev_2x128 (
-                    xmm_mask_lo, xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+                    w_mask_lo, w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-                in_over_2x128 (&xmm_src_lo, &xmm_src_hi,
-                               &mask_00ff, &mask_00ff, &xmm_mask_lo, &xmm_mask_hi,
-                               &xmm_dst_lo, &xmm_dst_hi);
+                in_over_2x128 (&w_src_lo, &w_src_hi,
+                               &mask_00ff, &mask_00ff, &w_mask_lo, &w_mask_hi,
+                               &w_dst_lo, &w_dst_hi);
 
-                save_128_aligned (dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                save_128_aligned (dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
             }
 
             src += 4;
@@ -5251,9 +5242,9 @@ msa_composite_over_8888_8_8888 (pixman_implementation_t *imp,
     int src_stride, mask_stride, dst_stride;
     uint32_t w;
 
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi, xmm_srca_lo, xmm_srca_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_src_lo, w_src_hi, w_srca_lo, w_srca_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -5314,29 +5305,29 @@ msa_composite_over_8888_8_8888 (pixman_implementation_t *imp,
 
             if (m)
             {
-                xmm_src = (v8i16)load_128_unaligned ((uint32_t*)src);
+                w_src = (v8i16)load_128_unaligned ((uint32_t*)src);
 
-                if (m == 0xffffffff && is_opaque ((v16i8)xmm_src))
+                if (m == 0xffffffff && is_opaque ((v16i8)w_src))
                 {
-                    save_128_aligned (dst, (v4i32)xmm_src);
+                    save_128_aligned (dst, (v4i32)w_src);
                 }
                 else
                 {
-                    xmm_dst = (v8i16)load_128_aligned (dst);
+                    w_dst = (v8i16)load_128_aligned (dst);
 
-                    xmm_mask = __msa_ilvr_h ((v8i16)unpack_32_1x128 (m), (v8i16)zero);
+                    w_mask = __msa_ilvr_h ((v8i16)unpack_32_1x128 (m), (v8i16)zero);
 
-                    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-                    unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-                    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+                    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+                    unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+                    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-                    expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_srca_lo, &xmm_srca_hi);
-                    expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+                    expand_alpha_2x128 (w_src_lo, w_src_hi, &w_srca_lo, &w_srca_hi);
+                    expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-                    in_over_2x128 (&xmm_src_lo,  &xmm_src_hi,  &xmm_srca_lo, &xmm_srca_hi,
-                                   &xmm_mask_lo, &xmm_mask_hi, &xmm_dst_lo,  &xmm_dst_hi);
+                    in_over_2x128 (&w_src_lo,  &w_src_hi,  &w_srca_lo, &w_srca_hi,
+                                   &w_mask_lo, &w_mask_hi, &w_dst_lo,  &w_dst_hi);
 
-                    save_128_aligned (dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+                    save_128_aligned (dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
                 }
             }
 
@@ -5393,9 +5384,9 @@ msa_composite_over_reverse_n_8888 (pixman_implementation_t *imp,
     PIXMAN_COMPOSITE_ARGS (info);
     uint32_t src;
     uint32_t    *dst_line, *dst;
-    v8i16 xmm_src;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_dsta_hi, xmm_dsta_lo;
+    v8i16 w_src;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_dsta_hi, w_dsta_lo;
     int dst_stride;
     uint32_t w;
 
@@ -5407,7 +5398,7 @@ msa_composite_over_reverse_n_8888 (pixman_implementation_t *imp,
     PIXMAN_IMAGE_GET_LINE (
         dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
 
-    xmm_src = (v8i16)expand_pixel_32_1x128 (src);
+    w_src = (v8i16)expand_pixel_32_1x128 (src);
 
     while (height--)
     {
@@ -5423,7 +5414,7 @@ msa_composite_over_reverse_n_8888 (pixman_implementation_t *imp,
             vd = unpack_32_1x128 (*dst);
 
             *dst = pack_1x128_32 ( (v8i16)over_1x128 ( (v16u8)vd, (v16u8)expand_alpha_1x128 ((v8i16)vd),
-                                              (v16u8)xmm_src));
+                                              (v16u8)w_src));
             w--;
             dst++;
         }
@@ -5432,16 +5423,16 @@ msa_composite_over_reverse_n_8888 (pixman_implementation_t *imp,
         {
             v8i16 tmp_lo, tmp_hi;
 
-            xmm_dst = (v8i16)load_128_aligned ((uint32_t *)dst);
+            w_dst = (v8i16)load_128_aligned ((uint32_t *)dst);
 
-            unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
-            expand_alpha_2x128 (xmm_dst_lo, xmm_dst_hi, &xmm_dsta_lo, &xmm_dsta_hi);
+            unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
+            expand_alpha_2x128 (w_dst_lo, w_dst_hi, &w_dsta_lo, &w_dsta_hi);
 
-            tmp_lo = xmm_src;
-            tmp_hi = xmm_src;
+            tmp_lo = w_src;
+            tmp_hi = w_src;
 
-            over_2x128 (&xmm_dst_lo, &xmm_dst_hi,
-                        &xmm_dsta_lo, &xmm_dsta_hi,
+            over_2x128 (&w_dst_lo, &w_dst_hi,
+                        &w_dsta_lo, &w_dsta_hi,
                         &tmp_lo, &tmp_hi);
 
             save_128_aligned (
@@ -5458,7 +5449,7 @@ msa_composite_over_reverse_n_8888 (pixman_implementation_t *imp,
             vd = (v8i16)unpack_32_1x128 (*dst);
 
             *dst = pack_1x128_32 ( (v8i16)over_1x128 ((v16u8)vd, (v16u8)expand_alpha_1x128 (vd),
-                                              (v16u8)xmm_src));
+                                              (v16u8)w_src));
             w--;
             dst++;
         }
@@ -5479,9 +5470,9 @@ msa_composite_over_8888_8888_8888 (pixman_implementation_t *imp,
     int src_stride, mask_stride, dst_stride;
     int32_t w;
 
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi, xmm_srca_lo, xmm_srca_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+    v8i16 w_src, w_src_lo, w_src_hi, w_srca_lo, w_srca_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_mask, w_mask_lo, w_mask_hi;
 
     PIXMAN_IMAGE_GET_LINE (
 	dest_image, dest_x, dest_y, uint32_t, dst_stride, dst_line, 1);
@@ -5537,31 +5528,31 @@ msa_composite_over_8888_8888_8888 (pixman_implementation_t *imp,
 
         while (w >= 4)
         {
-	    xmm_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
+	    w_mask = (v8i16)load_128_unaligned ((uint32_t*)mask);
 
-	    if (!is_transparent ((v16i8)xmm_mask))
+	    if (!is_transparent ((v16i8)w_mask))
 	    {
-		xmm_src = (v8i16)load_128_unaligned ((uint32_t*)src);
+		w_src = (v8i16)load_128_unaligned ((uint32_t*)src);
 
-		if (is_opaque ((v16i8)xmm_mask) && is_opaque ((v16i8)xmm_src))
+		if (is_opaque ((v16i8)w_mask) && is_opaque ((v16i8)w_src))
 		{
-		    save_128_aligned ((int32_t *)dst, (v4i32)xmm_src);
+		    save_128_aligned ((int32_t *)dst, (v4i32)w_src);
 		}
 		else
 		{
-		    xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+		    w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
 
-		    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-		    unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-		    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+		    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+		    unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+		    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-		    expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_srca_lo, &xmm_srca_hi);
-		    expand_alpha_2x128 (xmm_mask_lo, xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+		    expand_alpha_2x128 (w_src_lo, w_src_hi, &w_srca_lo, &w_srca_hi);
+		    expand_alpha_2x128 (w_mask_lo, w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-		    in_over_2x128 (&xmm_src_lo, &xmm_src_hi, &xmm_srca_lo, &xmm_srca_hi,
-				   &xmm_mask_lo, &xmm_mask_hi, &xmm_dst_lo, &xmm_dst_hi);
+		    in_over_2x128 (&w_src_lo, &w_src_hi, &w_srca_lo, &w_srca_hi,
+				   &w_mask_lo, &w_mask_hi, &w_dst_lo, &w_dst_hi);
 
-		    save_128_aligned ((int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		    save_128_aligned ((int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 		}
 	    }
 
@@ -5621,9 +5612,9 @@ scaled_nearest_scanline_msa_8888_8888_OVER (uint32_t*        pd,
     uint32_t s, d;
     const uint32_t* pm;
 
-    v8i16 xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
+    v8i16 w_dst_lo, w_dst_hi;
+    v8i16 w_src_lo, w_src_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
 
     pm = NULL;
 
@@ -5669,29 +5660,29 @@ scaled_nearest_scanline_msa_8888_8888_OVER (uint32_t*        pd,
 
 	tmp = __msa_set_u_w (tmp4, tmp3, tmp2, tmp1);
 
-	xmm_src_hi = (v8i16)combine4 (&tmp, pm);
+	w_src_hi = (v8i16)combine4 (&tmp, pm);
 
-	if (is_opaque ((v16i8)xmm_src_hi))
+	if (is_opaque ((v16i8)w_src_hi))
 	{
-	    save_128_aligned ((int32_t*)pd, (v4i32)xmm_src_hi);
+	    save_128_aligned ((int32_t*)pd, (v4i32)w_src_hi);
 	}
-	else if (!is_zero ((v16i8)xmm_src_hi))
+	else if (!is_zero ((v16i8)w_src_hi))
 	{
-	    xmm_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
+	    w_dst_hi = (v8i16)load_128_aligned ((int32_t*) pd);
 
-	    unpack_128_2x128 ((v16i8)xmm_src_hi, &xmm_src_lo, &xmm_src_hi);
-	    unpack_128_2x128 ((v16i8)xmm_dst_hi, &xmm_dst_lo, &xmm_dst_hi);
+	    unpack_128_2x128 ((v16i8)w_src_hi, &w_src_lo, &w_src_hi);
+	    unpack_128_2x128 ((v16i8)w_dst_hi, &w_dst_lo, &w_dst_hi);
 
 	    expand_alpha_2x128 (
-		xmm_src_lo, xmm_src_hi, &xmm_alpha_lo, &xmm_alpha_hi);
+		w_src_lo, w_src_hi, &w_alpha_lo, &w_alpha_hi);
 
-	    over_2x128 (&xmm_src_lo, &xmm_src_hi,
-			&xmm_alpha_lo, &xmm_alpha_hi,
-			&xmm_dst_lo, &xmm_dst_hi);
+	    over_2x128 (&w_src_lo, &w_src_hi,
+			&w_alpha_lo, &w_alpha_hi,
+			&w_dst_lo, &w_dst_hi);
 
 	    /* rebuid the 4 pixel data and save*/
 	    save_128_aligned ((int32_t*)pd,
-			      (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+			      (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	}
 
 	w -= 4;
@@ -5739,15 +5730,15 @@ scaled_nearest_scanline_msa_8888_n_8888_OVER (const uint32_t  * mask,
 					       pixman_fixed_t   src_width_fixed,
 					       pixman_bool_t    zero_src)
 {
-    v8i16 xmm_mask;
-    v8i16 xmm_src, xmm_src_lo, xmm_src_hi;
-    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-    v8i16 xmm_alpha_lo, xmm_alpha_hi;
+    v8i16 w_mask;
+    v8i16 w_src, w_src_lo, w_src_hi;
+    v8i16 w_dst, w_dst_lo, w_dst_hi;
+    v8i16 w_alpha_lo, w_alpha_hi;
 
     if (zero_src || (*mask >> 24) == 0)
 	return;
 
-    xmm_mask = create_mask_16_128 (*mask >> 24);
+    w_mask = create_mask_16_128 (*mask >> 24);
 
     while (w && (uintptr_t)dst & 15)
     {
@@ -5763,7 +5754,7 @@ scaled_nearest_scanline_msa_8888_n_8888_OVER (const uint32_t  * mask,
 
 	    v8i16 ms = (v8i16)unpack_32_1x128 (s);
 	    v8i16 alpha     = expand_alpha_1x128 (ms);
-	    v8i16 dest      = xmm_mask;
+	    v8i16 dest      = w_mask;
 	    v8i16 alpha_dst = (v8i16)unpack_32_1x128 (d);
 
 	    *dst = pack_1x128_32 (
@@ -5794,24 +5785,24 @@ scaled_nearest_scanline_msa_8888_n_8888_OVER (const uint32_t  * mask,
 	while (vx >= 0)
 	    vx -= src_width_fixed;
 
-	xmm_src = (v8i16)__msa_set_s_w (tmp4, tmp3, tmp2, tmp1);
+	w_src = (v8i16)__msa_set_s_w (tmp4, tmp3, tmp2, tmp1);
 
-	if (!is_zero ((v16i8)xmm_src))
+	if (!is_zero ((v16i8)w_src))
 	{
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
-	    expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-			        &xmm_alpha_lo, &xmm_alpha_hi);
+	    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
+	    expand_alpha_2x128 (w_src_lo, w_src_hi,
+			        &w_alpha_lo, &w_alpha_hi);
 
-	    in_over_2x128 (&xmm_src_lo, &xmm_src_hi,
-			   &xmm_alpha_lo, &xmm_alpha_hi,
-			   &xmm_mask, &xmm_mask,
-			   &xmm_dst_lo, &xmm_dst_hi);
+	    in_over_2x128 (&w_src_lo, &w_src_hi,
+			   &w_alpha_lo, &w_alpha_hi,
+			   &w_mask, &w_mask,
+			   &w_dst_lo, &w_dst_hi);
 
 	    save_128_aligned (
-		(int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		(int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	}
 
 	dst += 4;
@@ -5832,7 +5823,7 @@ scaled_nearest_scanline_msa_8888_n_8888_OVER (const uint32_t  * mask,
 
 	    v8i16 ms = (v8i16)unpack_32_1x128 (s);
 	    v8i16 alpha = expand_alpha_1x128 (ms);
-	    v8i16 mask  = xmm_mask;
+	    v8i16 mask  = w_mask;
 	    v8i16 dest  = (v8i16)unpack_32_1x128 (d);
 
 	    *dst = pack_1x128_32 (
@@ -5861,80 +5852,80 @@ FAST_NEAREST_MAINLOOP_COMMON (msa_8888_n_8888_normal_OVER,
 /************************************************************************/
 
 # define BILINEAR_DECLARE_VARIABLES                                                             \
-    const v8i16 xmm_wt = __msa_set_s_h (wt, wt, wt, wt, wt, wt, wt, wt);                        \
-    const v8i16 xmm_wb = __msa_set_s_h (wb, wb, wb, wb, wb, wb, wb, wb);                        \
-    const v8i16 xmm_addc = __msa_set_s_h (0, 1, 0, 1, 0, 1, 0, 1);                              \
-    const v8i16 xmm_ux1 = __msa_set_s_h (unit_x, -unit_x, unit_x, -unit_x,                      \
+    const v8i16 w_wt = __msa_set_s_h (wt, wt, wt, wt, wt, wt, wt, wt);                        \
+    const v8i16 w_wb = __msa_set_s_h (wb, wb, wb, wb, wb, wb, wb, wb);                        \
+    const v8i16 w_addc = __msa_set_s_h (0, 1, 0, 1, 0, 1, 0, 1);                              \
+    const v8i16 w_ux1 = __msa_set_s_h (unit_x, -unit_x, unit_x, -unit_x,                      \
                                           unit_x, -unit_x, unit_x, -unit_x);                    \
-    const v8i16 xmm_ux4 = __msa_set_s_h (unit_x * 4, -unit_x * 4,                               \
+    const v8i16 w_ux4 = __msa_set_s_h (unit_x * 4, -unit_x * 4,                               \
                                            unit_x * 4, -unit_x * 4,                             \
                                            unit_x * 4, -unit_x * 4,                             \
                                            unit_x * 4, -unit_x * 4);                            \
-    const v8i16 xmm_zero = {0, 0, 0, 0};                                                        \
-    v8i16 xmm_x = __msa_set_s_h (vx, -(vx + 1), vx, -(vx + 1),                                  \
+    const v8i16 w_zero = {0, 0, 0, 0};                                                        \
+    v8i16 w_x = __msa_set_s_h (vx, -(vx + 1), vx, -(vx + 1),                                  \
                                    vx, -(vx + 1), vx, -(vx + 1))
 
 #define BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER(pix, phase)                                       \
 do {                                                                                            \
-    v8i16 xmm_wh, xmm_a, xmm_b;                                                                 \
+    v8i16 w_wh, w_a, w_b;                                                                 \
     /* fetch 2x2 pixel block into sse2 registers */                                             \
     v2i64 tltr = __msa_pckev_d (__msa_ld_d (&src_top[vx >> 16], 0), (v2i64) zero);               \
     v2i64 blbr = __msa_pckev_d (__msa_ld_d (&src_bottom[vx >> 16], 0), (v2i64) zero);            \
-    (void)xmm_ux4; /* suppress warning: unused variable 'xmm_ux4' */                            \
+    (void)w_ux4; /* suppress warning: unused variable 'w_ux4' */                            \
     vx += unit_x;                                                                               \
     /* vertical interpolation */                                                                \
-    xmm_a = __msa_mulv_h ((v8i16)__msa_ilvr_b ((v16i8)tltr, (v16i8)xmm_zero), xmm_wt);       \
-    xmm_b = __msa_mulv_h ((v8i16)__msa_ilvr_b ((v16i8)blbr, (v16i8)xmm_zero), xmm_wb);       \
-    xmm_a = __msa_adds_s_h (xmm_a, xmm_b);                                                      \
+    w_a = __msa_mulv_h ((v8i16)__msa_ilvr_b ((v16i8)tltr, (v16i8)w_zero), w_wt);       \
+    w_b = __msa_mulv_h ((v8i16)__msa_ilvr_b ((v16i8)blbr, (v16i8)w_zero), w_wb);       \
+    w_a = __msa_adds_s_h (w_a, w_b);                                                      \
     /* calculate horizontal weights */                                                          \
-    xmm_wh = __msa_adds_s_h (xmm_addc, __msa_srli_h (xmm_x,                                     \
+    w_wh = __msa_adds_s_h (w_addc, __msa_srli_h (w_x,                                     \
                                         16 - BILINEAR_INTERPOLATION_BITS));                     \
-    xmm_x = __msa_adds_s_h (xmm_x, xmm_ux1);                                                    \
+    w_x = __msa_adds_s_h (w_x, w_ux1);                                                    \
     /* horizontal interpolation */                                                              \
-    xmm_b = (v8i16)__msa_ilvr_d (/* any value is fine here */ (v2i64) xmm_b, (v2i64) xmm_a);   \
-    xmm_a = (v8i16)msa_madd_h (__msa_ilvr_h (xmm_b, xmm_a), xmm_wh);                           \
+    w_b = (v8i16)__msa_ilvr_d (/* any value is fine here */ (v2i64) w_b, (v2i64) w_a);   \
+    w_a = (v8i16)msa_madd_h (__msa_ilvr_h (w_b, w_a), w_wh);                           \
     /* shift the result */                                                                      \
-    pix = (v8i16)__msa_srli_w ((v4i32)xmm_a, BILINEAR_INTERPOLATION_BITS * 2);                \
+    pix = (v8i16)__msa_srli_w ((v4i32)w_a, BILINEAR_INTERPOLATION_BITS * 2);                \
 } while (0)
 
 /***********************************************************************************/
 
 #define BILINEAR_INTERPOLATE_ONE_PIXEL(pix);					                \
 do {										                \
-	v8i16 xmm_pix;							                        \
-	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (xmm_pix, -1);			                \
-	xmm_pix = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)xmm_pix, 15),                      \
-                                 (v8i16)__msa_sat_s_w ((v4i32)xmm_pix, 15));			\
-	xmm_pix = (v8i16)__msa_pckev_b((v16i8)__msa_sat_u_h ((v8u16)xmm_pix, 7),                \
-                                       (v16i8)__msa_sat_u_h ((v8u16)xmm_pix, 7));		\
-	pix = __msa_copy_u_w ((v4i32)xmm_pix, 0);                                               \
+	v8i16 w_pix;							                        \
+	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (w_pix, -1);			                \
+	w_pix = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)w_pix, 15),                      \
+                                 (v8i16)__msa_sat_s_w ((v4i32)w_pix, 15));			\
+	w_pix = (v8i16)__msa_pckev_b((v16i8)__msa_sat_u_h ((v8u16)w_pix, 7),                \
+                                       (v16i8)__msa_sat_u_h ((v8u16)w_pix, 7));		\
+	pix = __msa_copy_u_w ((v4i32)w_pix, 0);                                               \
 } while(0)
 
 #define BILINEAR_INTERPOLATE_FOUR_PIXELS(pix);					                \
 do {										                \
-	v8i16 xmm_pix1, xmm_pix2, xmm_pix3, xmm_pix4;				                \
-	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (xmm_pix1, 0);			                \
-	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (xmm_pix2, 1);			                \
-	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (xmm_pix3, 2);			                \
-	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (xmm_pix4, 3);			                \
-	xmm_pix1 = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)xmm_pix2, 15),                    \
-                                  (v8i16)__msa_sat_s_w ((v4i32)xmm_pix1, 15));			\
-	xmm_pix3 = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)xmm_pix4, 15),                    \
-                                  (v8i16)__msa_sat_s_w ((v4i32)xmm_pix3, 15));			\
-	pix = (v8i16)__msa_pckev_b ((v16i8)__msa_sat_u_h ((v8u16)xmm_pix3, 7),                   \
-                                    (v16i8)__msa_sat_u_h ((v8u16)xmm_pix1, 7));                  \
+	v8i16 w_pix1, w_pix2, w_pix3, w_pix4;				                \
+	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (w_pix1, 0);			                \
+	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (w_pix2, 1);			                \
+	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (w_pix3, 2);			                \
+	BILINEAR_INTERPOLATE_ONE_PIXEL_HELPER (w_pix4, 3);			                \
+	w_pix1 = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)w_pix2, 15),                    \
+                                  (v8i16)__msa_sat_s_w ((v4i32)w_pix1, 15));			\
+	w_pix3 = __msa_pckev_h ((v8i16)__msa_sat_s_w ((v4i32)w_pix4, 15),                    \
+                                  (v8i16)__msa_sat_s_w ((v4i32)w_pix3, 15));			\
+	pix = (v8i16)__msa_pckev_b ((v16i8)__msa_sat_u_h ((v8u16)w_pix3, 7),                   \
+                                    (v16i8)__msa_sat_u_h ((v8u16)w_pix1, 7));                  \
 } while(0)
 
 #define BILINEAR_SKIP_ONE_PIXEL()						                \
 do {										                \
     vx += unit_x;								                \
-    xmm_x = __msa_addv_h (xmm_x, xmm_ux1);					                \
+    w_x = __msa_addv_h (w_x, w_ux1);					                \
 } while(0)
 
 #define BILINEAR_SKIP_FOUR_PIXELS()						                \
 do {										                \
     vx += unit_x * 4;								                \
-    xmm_x = __msa_addv_h (xmm_x, xmm_ux4);					                \
+    w_x = __msa_addv_h (w_x, w_ux4);					                \
 } while(0)
 
 /***********************************************************************************/
@@ -5966,9 +5957,9 @@ scaled_bilinear_scanline_msa_8888_8888_SRC (uint32_t *        dst,
     }
 
     while ((w -= 4) >= 0) {
-	v8i16 xmm_src;
-	BILINEAR_INTERPOLATE_FOUR_PIXELS (xmm_src);
-	__msa_st_h (xmm_src, dst, 0);
+	v8i16 w_src;
+	BILINEAR_INTERPOLATE_FOUR_PIXELS (w_src);
+	__msa_st_h (w_src, dst, 0);
 	dst += 4;
     }
 
@@ -6031,9 +6022,9 @@ scaled_bilinear_scanline_msa_x888_8888_SRC (uint32_t *        dst,
     }
 
     while ((w -= 4) >= 0) {
-	v8i16 xmm_src;
-	BILINEAR_INTERPOLATE_FOUR_PIXELS (xmm_src);
-	__msa_st_h ((v8i16)__msa_or_v ((v16u8)xmm_src, (v16u8)mask_ff000000), dst, 0);
+	v8i16 w_src;
+	BILINEAR_INTERPOLATE_FOUR_PIXELS (w_src);
+	__msa_st_h ((v8i16)__msa_or_v ((v16u8)w_src, (v16u8)mask_ff000000), dst, 0);
 	dst += 4;
     }
 
@@ -6099,30 +6090,30 @@ scaled_bilinear_scanline_msa_8888_8888_OVER (uint32_t *       dst,
 
     while (w  >= 4)
     {
-	v8i16 xmm_src;
-	v8i16 xmm_src_hi, xmm_src_lo, xmm_dst_hi, xmm_dst_lo;
-	v8i16 xmm_alpha_hi, xmm_alpha_lo;
+	v8i16 w_src;
+	v8i16 w_src_hi, w_src_lo, w_dst_hi, w_dst_lo;
+	v8i16 w_alpha_hi, w_alpha_lo;
 
-	BILINEAR_INTERPOLATE_FOUR_PIXELS (xmm_src);
+	BILINEAR_INTERPOLATE_FOUR_PIXELS (w_src);
 
-	if (!is_zero ((v16i8)xmm_src))
+	if (!is_zero ((v16i8)w_src))
 	{
-	    if (is_opaque ((v16i8)xmm_src))
+	    if (is_opaque ((v16i8)w_src))
 	    {
-		save_128_aligned ((int32_t *)dst, (v4i32)xmm_src);
+		save_128_aligned ((int32_t *)dst, (v4i32)w_src);
 	    }
 	    else
 	    {
-		v8i16 xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+		v8i16 w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
 
-		unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-		unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
+		unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+		unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
 
-		expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_alpha_lo, &xmm_alpha_hi);
-		over_2x128 (&xmm_src_lo, &xmm_src_hi, &xmm_alpha_lo, &xmm_alpha_hi,
-			    &xmm_dst_lo, &xmm_dst_hi);
+		expand_alpha_2x128 (w_src_lo, w_src_hi, &w_alpha_lo, &w_alpha_hi);
+		over_2x128 (&w_src_lo, &w_src_hi, &w_alpha_lo, &w_alpha_hi,
+			    &w_dst_lo, &w_dst_hi);
 
-		save_128_aligned ((int32_t *)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		save_128_aligned ((int32_t *)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	    }
 	}
 
@@ -6221,37 +6212,37 @@ scaled_bilinear_scanline_msa_8888_8_8888_OVER (uint32_t *        dst,
     {
         uint32_t m;
 
-	v8i16 xmm_src, xmm_src_lo, xmm_src_hi, xmm_srca_lo, xmm_srca_hi;
-	v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-	v8i16 xmm_mask, xmm_mask_lo, xmm_mask_hi;
+	v8i16 w_src, w_src_lo, w_src_hi, w_srca_lo, w_srca_hi;
+	v8i16 w_dst, w_dst_lo, w_dst_hi;
+	v8i16 w_mask, w_mask_lo, w_mask_hi;
 
         memcpy(&m, mask, sizeof(uint32_t));
 
 	if (m)
 	{
-	    BILINEAR_INTERPOLATE_FOUR_PIXELS (xmm_src);
+	    BILINEAR_INTERPOLATE_FOUR_PIXELS (w_src);
 
-	    if (m == 0xffffffff && is_opaque ((v16i8)xmm_src))
+	    if (m == 0xffffffff && is_opaque ((v16i8)w_src))
 	    {
-		save_128_aligned ((int32_t *)dst, (v4i32)xmm_src);
+		save_128_aligned ((int32_t *)dst, (v4i32)w_src);
 	    }
 	    else
 	    {
-		xmm_dst = (v8i16)load_128_aligned ((int32_t *)dst);
+		w_dst = (v8i16)load_128_aligned ((int32_t *)dst);
 
-		xmm_mask = __msa_ilvr_h (__msa_fill_h (0), (v8i16)unpack_32_1x128 (m));
+		w_mask = __msa_ilvr_h (__msa_fill_h (0), (v8i16)unpack_32_1x128 (m));
 
-		unpack_128_2x128 ((v16i8)xmm_src,  &xmm_src_lo,  &xmm_src_hi);
-		unpack_128_2x128 ((v16i8)xmm_mask, &xmm_mask_lo, &xmm_mask_hi);
-		unpack_128_2x128 ((v16i8)xmm_dst,  &xmm_dst_lo,  &xmm_dst_hi);
+		unpack_128_2x128 ((v16i8)w_src,  &w_src_lo,  &w_src_hi);
+		unpack_128_2x128 ((v16i8)w_mask, &w_mask_lo, &w_mask_hi);
+		unpack_128_2x128 ((v16i8)w_dst,  &w_dst_lo,  &w_dst_hi);
 
-		expand_alpha_2x128 (xmm_src_lo, xmm_src_hi, &xmm_srca_lo, &xmm_srca_hi);
-		expand_alpha_rev_2x128 (xmm_mask_lo, xmm_mask_hi, &xmm_mask_lo, &xmm_mask_hi);
+		expand_alpha_2x128 (w_src_lo, w_src_hi, &w_srca_lo, &w_srca_hi);
+		expand_alpha_rev_2x128 (w_mask_lo, w_mask_hi, &w_mask_lo, &w_mask_hi);
 
-		in_over_2x128 (&xmm_src_lo, &xmm_src_hi, &xmm_srca_lo, &xmm_srca_hi,
-			       &xmm_mask_lo, &xmm_mask_hi, &xmm_dst_lo, &xmm_dst_hi);
+		in_over_2x128 (&w_src_lo, &w_src_hi, &w_srca_lo, &w_srca_hi,
+			       &w_mask_lo, &w_mask_hi, &w_dst_lo, &w_dst_hi);
 
-		save_128_aligned ((int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		save_128_aligned ((int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	    }
 	}
 	else
@@ -6337,12 +6328,12 @@ scaled_bilinear_scanline_msa_8888_n_8888_OVER (uint32_t *        dst,
     intptr_t unit_x = unit_x_;
     BILINEAR_DECLARE_VARIABLES;
     uint32_t pix1;
-    v8i16 xmm_mask;
+    v8i16 w_mask;
 
     if (zero_src || (*mask >> 24) == 0)
 	return;
 
-    xmm_mask = create_mask_16_128 (*mask >> 24);
+    w_mask = create_mask_16_128 (*mask >> 24);
 
     while (w && ((uintptr_t)dst & 15))
     {
@@ -6353,7 +6344,7 @@ scaled_bilinear_scanline_msa_8888_n_8888_OVER (uint32_t *        dst,
 
 		v8i16 ms        = (v8i16)unpack_32_1x128 (pix1);
 		v8i16 alpha     = expand_alpha_1x128 (ms);
-		v8i16 dest      = xmm_mask;
+		v8i16 dest      = w_mask;
 		v8i16 alpha_dst = (v8i16)unpack_32_1x128 (d);
 
 		*dst = pack_1x128_32
@@ -6366,29 +6357,29 @@ scaled_bilinear_scanline_msa_8888_n_8888_OVER (uint32_t *        dst,
 
     while (w >= 4)
     {
-	v8i16 xmm_src;
-	BILINEAR_INTERPOLATE_FOUR_PIXELS (xmm_src);
+	v8i16 w_src;
+	BILINEAR_INTERPOLATE_FOUR_PIXELS (w_src);
 
-	if (!is_zero ((v16i8)xmm_src))
+	if (!is_zero ((v16i8)w_src))
 	{
-	    v8i16 xmm_src_lo, xmm_src_hi;
-	    v8i16 xmm_dst, xmm_dst_lo, xmm_dst_hi;
-	    v8i16 xmm_alpha_lo, xmm_alpha_hi;
+	    v8i16 w_src_lo, w_src_hi;
+	    v8i16 w_dst, w_dst_lo, w_dst_hi;
+	    v8i16 w_alpha_lo, w_alpha_hi;
 
-	    xmm_dst = (v8i16)load_128_aligned ((int32_t*)dst);
+	    w_dst = (v8i16)load_128_aligned ((int32_t*)dst);
 
-	    unpack_128_2x128 ((v16i8)xmm_src, &xmm_src_lo, &xmm_src_hi);
-	    unpack_128_2x128 ((v16i8)xmm_dst, &xmm_dst_lo, &xmm_dst_hi);
-	    expand_alpha_2x128 (xmm_src_lo, xmm_src_hi,
-				&xmm_alpha_lo, &xmm_alpha_hi);
+	    unpack_128_2x128 ((v16i8)w_src, &w_src_lo, &w_src_hi);
+	    unpack_128_2x128 ((v16i8)w_dst, &w_dst_lo, &w_dst_hi);
+	    expand_alpha_2x128 (w_src_lo, w_src_hi,
+				&w_alpha_lo, &w_alpha_hi);
 
-	    in_over_2x128 (&xmm_src_lo, &xmm_src_hi,
-			   &xmm_alpha_lo, &xmm_alpha_hi,
-			   &xmm_mask, &xmm_mask,
-			   &xmm_dst_lo, &xmm_dst_hi);
+	    in_over_2x128 (&w_src_lo, &w_src_hi,
+			   &w_alpha_lo, &w_alpha_hi,
+			   &w_mask, &w_mask,
+			   &w_dst_lo, &w_dst_hi);
 
 	    save_128_aligned
-		((int32_t*)dst, (v4i32)pack_2x128_128 (xmm_dst_lo, xmm_dst_hi));
+		((int32_t*)dst, (v4i32)pack_2x128_128 (w_dst_lo, w_dst_hi));
 	}
 
 	dst += 4;
@@ -6404,7 +6395,7 @@ scaled_bilinear_scanline_msa_8888_n_8888_OVER (uint32_t *        dst,
 
 		v8i16 ms        = (v8i16)unpack_32_1x128 (pix1);
 		v8i16 alpha     = expand_alpha_1x128 (ms);
-		v8i16 dest      = xmm_mask;
+		v8i16 dest      = w_mask;
 		v8i16 alpha_dst = (v8i16)unpack_32_1x128 (d);
 
 		*dst = pack_1x128_32
@@ -6660,8 +6651,8 @@ msa_fetch_a8 (pixman_iter_t *iter, const uint32_t *mask)
     int w = iter->width;
     uint32_t *dst = iter->buffer;
     uint8_t *src = iter->bits;
-    v16i8 xmm0, xmm1, xmm2;
-    v8i16 xmm3, xmm4, xmm5, xmm6;
+    v16i8 w0, w1, w2;
+    v8i16 w3, w4, w5, w6;
 
     iter->bits += iter->stride;
 
@@ -6673,19 +6664,19 @@ msa_fetch_a8 (pixman_iter_t *iter, const uint32_t *mask)
 
     while (w >= 16)
     {
-	xmm0 = __msa_ld_b(src, 0);
+	w0 = __msa_ld_b(src, 0);
 
-	xmm1 = __msa_ilvr_b (xmm0, __msa_fill_b (0));
-	xmm2 = __msa_ilvl_b (xmm0, __msa_fill_b (0));
-	xmm3 = __msa_ilvr_h ((v8i16)xmm1, __msa_fill_h (0));
-	xmm4 = __msa_ilvl_h ((v8i16)xmm1, __msa_fill_h (0));
-	xmm5 = __msa_ilvr_h ((v8i16)xmm2, __msa_fill_h (0));
-	xmm6 = __msa_ilvl_h ((v8i16)xmm2, __msa_fill_h (0));
+	w1 = __msa_ilvr_b (w0, __msa_fill_b (0));
+	w2 = __msa_ilvl_b (w0, __msa_fill_b (0));
+	w3 = __msa_ilvr_h ((v8i16)w1, __msa_fill_h (0));
+	w4 = __msa_ilvl_h ((v8i16)w1, __msa_fill_h (0));
+	w5 = __msa_ilvr_h ((v8i16)w2, __msa_fill_h (0));
+	w6 = __msa_ilvl_h ((v8i16)w2, __msa_fill_h (0));
 
-	__msa_st_w((v4i32)xmm3, (dst +  0), 0);
-	__msa_st_w((v4i32)xmm4, (dst +  4), 0);
-	__msa_st_w((v4i32)xmm5, (dst +  8), 0);
-	__msa_st_w((v4i32)xmm6, (dst + 12), 0);
+	__msa_st_w((v4i32)w3, (dst +  0), 0);
+	__msa_st_w((v4i32)w4, (dst +  4), 0);
+	__msa_st_w((v4i32)w5, (dst +  8), 0);
+	__msa_st_w((v4i32)w6, (dst + 12), 0);
 
 	dst += 16;
 	src += 16;

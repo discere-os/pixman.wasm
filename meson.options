@@ -64,6 +64,11 @@ option(
   description : 'Use MIPS32 DSPr2 intrinsic optimized paths',
 )
 option(
+  'mips-msa',
+  type : 'feature',
+  description : 'Enable MIPS SIMD Architecture (MSA) Support'
+)
+option(
   'rvv',
   type : 'feature',
   description : 'Use RISC-V Vector extension',
@@ -119,10 +124,4 @@ option(
   'demos',
   type : 'feature',
   description : 'Build demos'
-)
-
-option(
-  'mips-msa',
-  type : 'feature',
-  description : 'Enable MIPS SIMD Architecture (MSA) Support'
 )

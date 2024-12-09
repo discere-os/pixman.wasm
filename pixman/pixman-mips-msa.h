@@ -36,19 +36,6 @@
 #include "pixman-inlines.h"
 #include "pixman-compiler.h"
 
-#ifdef __GNUC__ 
-#   define inline __inline__
-#   define force_inline __inline__ __attribute__ ((__always_inline__))
-#   define noinline __attribute__((noinline))
-#else
-#   ifndef force_inline
-#      define force_inline inline
-#   endif
-#   ifndef noinline
-#      define noinline
-#   endif
-#endif
-
 #ifdef _MIPSEB
 #define LANE_IMM0_1(x)	(0b1 - ((x) & 0b1))
 #define LANE_IMM0_3(x)	(0b11 - ((x) & 0b11))
@@ -63,8 +50,8 @@
 
 /* get lane */
 #define msa_getq_lane_s16(__a, __b)	((int16_t)(__a)[LANE_IMM0_7(__b)])
-#define msa_getq_lane_s32(__a, __b)  ((int32_t)(__a)[LANE_IMM0_3(__b)])
-#define msa_getq_lane_s8(__a, imm0_15)   ((int8_t)__builtin_msa_copy_s_b(__a, imm0_15))
+#define msa_getq_lane_s32(__a, __b)     ((int32_t)(__a)[LANE_IMM0_3(__b)])
+#define msa_getq_lane_s8(__a, imm0_15)  ((int8_t)__builtin_msa_copy_s_b(__a, imm0_15))
 
 /* MSA_SHUFFLE */
 #define _MSA_SHUFFLE(z, y, x, w) (((z) << 6) | ((y) << 4) | ((x) << 2) | (w))
@@ -73,10 +60,10 @@
 #define msa_dupq_n_s32(__a, __b, __c, __d)	((v4i32){__d, __c, __b, __a})
 
 /*
- * 保证输入顺序与 _mm_set_epixx 一致
- * 用　法：v4i32   test = __msa_set_s_w(1, 2, 3, 4);
- * 等同于：v4i32   test =              {4, 3, 2, 1};
- * 相当于：__m128i test = _mm_set_epi32(1, 2, 3, 4);
+ * Make sure that input order is the same as _mm_set_epixx in sse2
+ *         Usage: v4i32   test = __msa_set_s_w(1, 2, 3, 4);
+ *       Same as: v4i32   test =              {4, 3, 2, 1};
+ * Equivalent to: __m128i test = _mm_set_epi32(1, 2, 3, 4);
 */
 #define __msa_set_s_b(elem15, elem14, elem13, elem12, elem11, elem10, elem9, elem8, elem7, elem6, elem5, elem4, elem3, elem2, elem1, elem0) \
         {elem0, elem1, elem2, elem3, elem4, elem5, elem6, elem7, elem8, elem9, elem10, elem11, elem12, elem13, elem14, elem15}
@@ -89,7 +76,7 @@
 #define __msa_set_u_w  (v4u32)__msa_set_s_w
 #define __msa_set_u_d  (v2u64)__msa_set_s_d
 
-/*zero*/
+/* zero */
 const v4i32 zero = {0, 0, 0, 0};
 
 /* mul */
