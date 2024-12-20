@@ -1,5 +1,11 @@
 # This file contains the set of jobs run by the pixman project:
 # https://gitlab.freedesktop.org/pixman/pixman/-/pipelines
+#
+# Expected GitLab CI variables:
+#   - RUNNER_TAG_DEFAULT – default GitLab CI runner tag. The `kvm` tag works on
+#     FDO infrastructure.
+#   - RUNNER_TAG_ARM – GitLab CI tag for ARM targets. Needs to have capability
+#     to run both 32 and 64-bit ARM binaries.
 
 stages:
   - docker
@@ -8,9 +14,10 @@ stages:
   - summary
 
 variables:
-  # Make it possible to change RUNNER_TAG from GitLab variables. The default
-  # `kvm` tag has been tested with FDO infrastructure.
-  RUNNER_TAG: kvm
+  # Default values for variables which are supposed to be overridden in the form
+  # of GitLab CI variables.
+  RUNNER_TAG_DEFAULT: kvm
+  RUNNER_TAG_ARM: kvm-aarch64
 
   # Docker image global configuration.
   DOCKER_TAG: latest
@@ -51,7 +58,7 @@ workflow:
 
 default:
   tags:
-    - $RUNNER_TAG
+    - $RUNNER_TAG_DEFAULT
 
   # Retry in case the runner is misconfigured for multi-arch builds or some
   # random unexpected runner error occurs (it happened during testing).
