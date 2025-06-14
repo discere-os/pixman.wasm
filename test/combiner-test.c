@@ -68,8 +68,9 @@ static float
 rand_float (void)
 {
     uint32_t u = prng_rand();
-
-    return *(float *)&u;
+    float uu;
+    memcpy(&uu, &u, sizeof(float));
+    return uu;
 }
 
 static void
