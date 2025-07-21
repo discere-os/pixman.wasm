@@ -25,7 +25,7 @@
 
 #include "pixman-private.h"
 
-#if defined(USE_MIPS_DSPR2) || defined(USE_LOONGSON_MMI)
+#if defined(USE_MIPS_DSPR2) || defined(USE_LOONGSON_MMI) || defined (USE_MIPS_MSA)
 
 #include <string.h>
 #include <stdlib.h>
@@ -100,6 +100,20 @@ _pixman_mips_get_implementations (pixman_implementation_t *imp)
 	{
 	    imp = _pixman_implementation_create_mips_dspr2 (imp);
 	}
+    }
+#endif
+
+#ifdef USE_MIPS_MSA
+    if (!_pixman_disabled("mips-msa"))
+    {
+        int already_compiling_everything_for_msa = 0;
+#if defined (__mips_msa) && (__mips_msa_width == 128)
+        already_compiling_everything_for_msa = 1;
+#endif
+        if (already_compiling_everything_for_msa) 
+        {
+            imp = _pixman_implementation_create_mips_msa(imp);
+        }
     }
 #endif
 

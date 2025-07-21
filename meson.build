@@ -365,6 +365,39 @@ elif use_mips_dspr2.enabled()
   error('MIPS DSPr2 Support unavailable, but required')
 endif
 
+use_mips_msa = get_option('mips-msa')
+have_mips_msa = false
+mips_msa_flags = ['-mmsa']
+if not use_mips_msa.disabled()
+  if host_machine.cpu_family().startswith('mips')
+    if cc.compiles('''
+      #if !(defined(__mips__) && defined(__mips_msa))
+      #error "You're not running at a MIPS platfrom, or MSA is not supported"
+      #endif
+      #include <msa.h>
+      int main() {
+        v4i32 a, b;
+        v8i16 result;
+        a = __msa_fill_w(0xF95EE621);
+        b = __msa_fill_w(0x9527BA8F);
+        result = __msa_pckev_h((v8i16)a, (v8i16)b);
+        return 0;
+      }
+      
+      ''',
+      args : mips_msa_flags,
+      name : 'MIPS SIMD Architecture (MSA) Support')
+      have_mips_msa = true
+    endif
+  endif
+endif
+
+if have_mips_msa
+  config.set10('USE_MIPS_MSA', true)
+elif use_mips_msa.enabled()
+  error('MIPS SIMD Architecture (MSA) Support unavailable, but required')
+endif
+
 use_rvv = get_option('rvv')
 have_rvv = false
 rvv_flags = ['-march=rv64gcv1p0']

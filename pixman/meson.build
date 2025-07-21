@@ -58,6 +58,7 @@ simds = [
   ['mips-dspr2', have_mips_dspr2, mips_dspr2_flags,
    ['pixman-mips-dspr2-asm.S', 'pixman-mips-memcpy-asm.S']],
    ['rvv', have_rvv, rvv_flags, []],
+  ['mips-msa', have_mips_msa, mips_msa_flags, []],
 ]
 
 foreach simd : simds
