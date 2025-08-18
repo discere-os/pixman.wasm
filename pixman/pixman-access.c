@@ -725,7 +725,9 @@ fetch_scanline_a16b16g16r16_float (bits_image_t *  image,
 
     while (pixel < end)
     {
-	uint64_t p = READ (image, pixel++);
+	uint64_t p;
+
+	memcpy(&p, pixel++, sizeof(p));
 	uint64_t a = (p >> 48) & 0xffff;
 	uint64_t b = (p >> 32) & 0xffff;
 	uint64_t g = (p >> 16) & 0xffff;
@@ -943,7 +945,8 @@ fetch_pixel_a16b16g16r16_float (bits_image_t *image,
 				int           line)
 {
     uint64_t *bits = (uint64_t *)(image->bits + line * image->rowstride);
-    uint64_t p = READ (image, bits + offset);
+    uint64_t p;
+    memcpy(&p, bits+offset, sizeof(p));
     uint64_t a = (p >> 48) & 0xffff;
     uint64_t b = (p >> 32) & 0xffff;
     uint64_t g = (p >> 16) & 0xffff;
@@ -1193,8 +1196,8 @@ store_scanline_a16b16g16r16_float (bits_image_t *  image,
 	g = pixman_float_to_unorm (values[i].g, 16);
 	b = pixman_float_to_unorm (values[i].b, 16);
 
-	WRITE (image, pixel++,
-	       (a << 48) | (b << 32) | (g << 16) | (r << 0));
+	uint64_t p = (a << 48) | (b << 32) | (g << 16) | (r << 0) ;
+	memcpy(pixel++, &p, sizeof(uint64_t));
     }
 }
 
