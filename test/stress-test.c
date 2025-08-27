@@ -13,6 +13,7 @@ static const pixman_format_code_t image_formats[] =
 {
     PIXMAN_rgba_float,
     PIXMAN_rgb_float,
+    PIXMAN_rgba_float16,
     PIXMAN_a16b16g16r16,
     PIXMAN_a8r8g8b8,
     PIXMAN_x8r8g8b8,
@@ -273,6 +274,10 @@ create_random_bits_image (alpha_preference_t alpha_preference)
 	align_mask = 15;
 	align_add = align_mask + prng_rand_n (65);
 	break;
+    case 64:
+	align_mask = 7;
+	align_add  = align_mask + prng_rand_n (33);
+	break;
     default:
 	align_mask = 3;
 	align_add = align_mask + prng_rand_n (17);
@@ -323,6 +328,8 @@ create_random_bits_image (alpha_preference_t alpha_preference)
 	stride = (stride + align_add) & (~align_mask);
 	if (format == PIXMAN_rgb_float || format == PIXMAN_rgba_float)
 	    bits = (uint32_t *)make_random_floats (height * stride);
+	else if (format == PIXMAN_rgba_float16)
+	    bits = (uint32_t *)make_random_halfs (height * stride);
 	else
 	    bits = (uint32_t *)make_random_bytes (height * stride);
 	break;
@@ -378,6 +385,8 @@ create_random_bits_image (alpha_preference_t alpha_preference)
 	stride = (stride + align_add) & (~align_mask);
 	if (format == PIXMAN_rgb_float || format == PIXMAN_rgba_float)
 	    bits = (uint32_t *)make_random_floats (height * stride);
+	else if (format == PIXMAN_rgba_float16)
+	    bits = (uint32_t *)make_random_halfs (height * stride);
 	else
 	    bits = (uint32_t *)make_random_bytes (height * stride);
 	if (!bits)
