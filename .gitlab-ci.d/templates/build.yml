@@ -46,23 +46,24 @@ spec:
         `allow_failure`.
       type: number
       default: 1
-    runner_tags:
-      description: List of GitLab runner tags for this job.
-      type: array
-      default: []
-    docker_job:
-      description: Docker image build job name.
+    runner_tag:
+      description: GitLab runner tag for this job.
+      type: string
+      default: ""
+    docker_job_prefix:
+      description: Docker image build job name prefix (without the runner tag).
+      type: string
       default: docker
 ---
 
 "$[[ inputs.job_name_prefix ]]build:$[[ inputs.target ]]$[[ inputs.job_name_suffix ]]":
   extends: .target:all
-  tags: $[[ inputs.runner_tags ]]
+  tags: ["$[[ inputs.runner_tag ]]"]
   stage: build
   allow_failure: $[[ inputs.allow_failure ]]
   retry: $[[ inputs.retry ]]
   needs:
-    - job: $[[ inputs.docker_job | expand_vars ]]
+    - job: "$[[ inputs.docker_job_prefix ]]:$[[ inputs.runner_tag ]]"
       optional: true
       parallel:
         matrix:

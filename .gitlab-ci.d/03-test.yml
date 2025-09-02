@@ -10,6 +10,12 @@
 #
 # Some emulated targets are really slow or cannot be run in multithreaded mode
 # (mipsel, arm-v5). Thus coverage reporting is disabled for them.
+spec:
+  inputs:
+    runner_tag_amd64:
+    runner_tag_qemu:
+    runner_tag_arm64:
+---
 
 variables:
   # Used in summary stage as well.
@@ -26,6 +32,7 @@ include:
         - "sse2 ssse3"  # Testing "mmx"
         - "mmx ssse3"  # Testing "sse2"
         - "mmx sse2"  # Testing "ssse3"
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-amd64
@@ -33,6 +40,7 @@ include:
         - ""
         - "fast"
         - "wholeops"
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-arm-v5
@@ -40,15 +48,15 @@ include:
       pixman_disable: ["arm-neon"] # Test only arm-simd.
       timeout: 3h
       test_timeout_multiplier: 40
-      runner_tags: [aarch64]
+      runner_tag: "$[[ inputs.runner_tag_arm64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-arm-v7
-      runner_tags: [aarch64]
+      runner_tag: "$[[ inputs.runner_tag_arm64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-arm64-v8
-      runner_tags: [aarch64]
+      runner_tag: "$[[ inputs.runner_tag_arm64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-mips
@@ -58,36 +66,39 @@ include:
       job_name_suffix: ":failing"
       allow_failure: true  # Some tests seem to fail.
       retry: 0
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-mips64le
       toolchain: [gnu]  # TODO: https://gitlab.freedesktop.org/pixman/pixman/-/issues/108
       qemu_cpu: [Loongson-3A4000]
-      runner_tags: [kvm]
+      runner_tag: "$[[ inputs.runner_tag_qemu ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-mipsel
       toolchain: [gnu]  # TODO: Add llvm once the build is fixed.
       qemu_cpu: [74Kf]
       timeout: 2h
-      runner_tags: [kvm]
+      runner_tag: "$[[ inputs.runner_tag_qemu ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-ppc
       qemu_cpu: [g4]
       timeout: 2h
       test_timeout_multiplier: 30
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-ppc64
       qemu_cpu: [power9]
       timeout: 2h
       test_timeout_multiplier: 30
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-ppc64le
       qemu_cpu: [power10]
-      runner_tags: [kvm]
+      runner_tag: "$[[ inputs.runner_tag_qemu ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: linux-riscv64
@@ -99,7 +110,7 @@ include:
         - rv64,v=true,vext_spec=v1.0,vlen=256,elen=64
         - rv64,v=true,vext_spec=v1.0,vlen=512,elen=64
         - rv64,v=true,vext_spec=v1.0,vlen=1024,elen=64
-      runner_tags: [kvm]
+      runner_tag: "$[[ inputs.runner_tag_qemu ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: windows-686
@@ -109,6 +120,7 @@ include:
         - "mmx ssse3"
         - "mmx sse2"
       retry: 2
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: windows-amd64
@@ -117,9 +129,10 @@ include:
         - ""
         - "fast"
         - "wholeops"
+      runner_tag: "$[[ inputs.runner_tag_amd64 ]]"
   - local: .gitlab-ci.d/templates/test.yml
     inputs:
       target: windows-arm64-v8
       toolchain: [llvm]
-      runner_tags: [aarch64]
+      runner_tag: "$[[ inputs.runner_tag_arm64 ]]"
       retry: 2
