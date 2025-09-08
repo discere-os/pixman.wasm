@@ -54,3 +54,28 @@ test/trap-crasher
 *.ilk
 *.obj
 *.exe
+
+# WASM build artifacts
+build-*/
+install-*/
+dist/
+node_modules/
+*.wasm
+*.js.mem
+*.js.symbols
+*.js.temp
+emsdk/
+emsdk_env.sh
+
+# WASM-specific temporary files
+*.wast
+*.wat
+benchmark-report-*.json
+
+# Node.js artifacts
+package-lock.json
+yarn.lock
+
+# CI/CD artifacts
+build-logs/
+test-results/
