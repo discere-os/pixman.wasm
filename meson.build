@@ -599,6 +599,7 @@ version_conf.set('PIXMAN_VERSION_MICRO', split[2])
 add_project_arguments('-DHAVE_CONFIG_H', language : ['c'])
 
 subdir('pixman')
+subdir('wasm')
 
 if not get_option('tests').disabled() or not get_option('demos').disabled()
   subdir('test/utils')
