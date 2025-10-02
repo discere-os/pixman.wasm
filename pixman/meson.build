@@ -130,6 +130,18 @@ libpixman = library(
   install : true,
 )
 
+# Static library for linking by dependent libraries
+libpixman_static = static_library(
+  'pixman-1-static',
+  [pixman_files, config_h, version_h, cpu_features_sources],
+  link_with: pixman_simd_libs,
+  c_args : libpixman_extra_cargs,
+  dependencies : [dep_m, dep_threads],
+  include_directories : cpu_features_inc,
+  install : true,
+  install_dir: get_option('libdir')
+)
+
 inc_pixman = include_directories('.')
 
 idep_pixman = declare_dependency(

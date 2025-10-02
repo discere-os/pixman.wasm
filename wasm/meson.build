@@ -36,6 +36,7 @@ shared_module(
   files('pixman_wasm_side.c'),
   dependencies: [idep_pixman],
   name_prefix: '',
+  name_suffix: 'wasm',
   c_args: pixman_wasm_cargs,
   link_args: pixman_side_link_args,
   install: true,
