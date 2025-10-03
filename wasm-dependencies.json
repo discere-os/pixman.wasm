@@ -1,0 +1,18 @@
+{
+  "wasm:libc": {
+    "version": "*",
+    "symbols": {
+      "required": [
+        "malloc",
+        "free",
+        "memcpy",
+        "memset",
+        "sqrt",
+        "floor",
+        "ceil"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  }
+}
