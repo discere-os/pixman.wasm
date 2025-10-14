@@ -1,12 +1,12 @@
 /**
- * ${LIB_TITLE} WASM Benchmarks
+ * Pixman WASM Benchmarks
  */
 
-import ${LIB_TITLE}WASM from "../src/lib/index.ts"
+import PixmanWASM from "../src/lib/index.ts"
 
-Deno.bench("${LIB_NAME} initialization", {
+Deno.bench("pixman initialization", {
   baseline: true
 }, async () => {
-  const lib = new ${LIB_TITLE}WASM()
+  const lib = new PixmanWASM()
   await lib.initialize()
 })
