@@ -6,9 +6,9 @@
     "./main": "./install/wasm/pixman-main.js"
   },
   "tasks": {
-    "build:main:meson": "meson setup build-main --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-main pixman-main && meson install -C build-main",
-    "build:side:meson": "meson setup build-side --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-side pixman-side && meson install -C build-side",
-    "build:wasm:meson": "deno task build:main:meson && deno task build:side:meson && deno task manifest",
+    "build:main": "meson setup build-main --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-main pixman-main && meson install -C build-main",
+    "build:side": "meson setup build-side --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-side pixman-side && meson install -C build-side",
+    "build:wasm": "deno task build:main && deno task build:side && deno task manifest",
     "manifest": "deno run --allow-read --allow-write --allow-run ../../../../scripts/generate-wasm-manifest.ts .",
     "clean": "rm -rf build-* install/"
   }
