@@ -1,15 +1,30 @@
 {
   "name": "@discere-os/pixman.wasm",
+  "version": "1.0.0",
+  "description": "WASM port of Pixman with web-native optimizations for Discere OS",
   "exports": {
-    ".": "./",
+    ".": "./src/lib/index.ts",
     "./side": "./install/wasm/pixman-side.wasm",
-    "./main": "./install/wasm/pixman-main.js"
+    "./main": "./install/wasm/pixman-main.js",
+    "./types": "./src/lib/types.ts"
+  },
+  "imports": {
+    "module": "data:application/javascript,export const createRequire = () => () => { throw new Error('Node.js not supported'); }; export default { createRequire };",
+    "path": "data:application/javascript,export const join = (...args) => args.join('/'); export default { join };",
+    "fs": "data:application/javascript,export const readFileSync = () => { throw new Error('fs not supported'); }; export default { readFileSync };"
   },
   "tasks": {
-    "build:main": "meson setup build-main --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-main pixman-main && meson install -C build-main",
-    "build:side": "meson setup build-side --cross-file=scripts/emscripten.cross -Ddefault_library=static -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-side pixman-side && meson install -C build-side",
-    "build:wasm": "deno task build:main && deno task build:side && deno task manifest",
-    "manifest": "deno run --allow-read --allow-write --allow-run ../../../../scripts/generate-wasm-manifest.ts .",
-    "clean": "rm -rf build-* install/"
+    "build:wasm": "bash scripts/unified-build.sh standard",
+    "build:minimal": "bash scripts/unified-build.sh minimal",
+    "build:standard": "bash scripts/unified-build.sh standard",
+    "build:webgpu": "bash scripts/unified-build.sh webgpu",
+    "clean": "CLEAN=true bash scripts/unified-build.sh",
+    "demo": "deno run --allow-read demo-deno.ts",
+    "test": "deno test --allow-read tests/deno/",
+    "bench": "deno run --allow-read bench/simd_bench.ts",
+    "validate:all": "deno task test && deno task bench"
+  },
+  "publish": {
+    "exclude": ["build*", "*.sh", ".git*", "demos", "test"]
   }
 }

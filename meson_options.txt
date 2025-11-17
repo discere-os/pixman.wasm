@@ -1,0 +1,16 @@
+option('wasm_build_type', type: 'combo',
+       choices: ['minimal', 'standard', 'webgpu'], value: 'standard',
+       description: 'WASM build type (minimal=2MB, standard=4MB, webgpu=6MB)')
+
+option('wasm_simd', type: 'boolean', value: true,
+       description: 'Enable WASM SIMD optimizations (mandatory for 3-5x speedup)')
+
+option('wasm_threading', type: 'boolean', value: true,
+       description: 'Enable pthread support (10x speedup vs emulation)')
+
+option('wasm_webgpu', type: 'boolean', value: false,
+       description: 'Enable WebGPU renderer (GPU-accelerated operations)')
+
+option('wasm_optimize', type: 'combo',
+       choices: ['size', 'speed', 'balanced'], value: 'balanced',
+       description: 'Optimization strategy')
